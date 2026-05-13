@@ -1,0 +1,74 @@
+# Circle — friends tracker
+
+You are building Circle, a voice-first friends tracker app. The user opens the app, talks/types about their day, and AI extracts who it's about. A ranked list of friends emerges by closeness.
+
+**Positioning**: friends tracker, not journal app. The journal-style input is the mechanism. The ranking is the product.
+
+## Aesthetic: stripped quiet
+
+Cream paper + serif + minimal chrome. References: Day One, Letterboxd, Co-Star. NOT Notion, NOT Linear, NOT a generic SaaS dashboard.
+
+```
+Background:  #FAF7F0  (warm cream)
+Primary:     #1F1A14  (warm black)
+Secondary:   #8C7E5C  (mid tan)
+Tertiary:    #B4A689  (light tan)
+Borders:     #D9CFBC  (hairline)
+Accent:      #C8553D  (coral)
+Sage:        #6F7D63  (positive trends)
+```
+
+Typography: Fraunces (serif) for display + body, JetBrains Mono for numbers. Weights 400 and 500 only. Italic for prompts and special moments.
+
+Icons: Tabler outline webfont only. Never filled variants. Never emoji.
+
+Layout: 16px horizontal padding. Hairline borders only. No double rules, no dashed dividers, no chip badges, no sparklines in v1. Single coral accent point per screen.
+
+## Tech stack
+
+- Next.js 15 App Router, TypeScript strict
+- Tailwind CSS with CSS variables for palette
+- Dexie for IndexedDB (local-first, no cloud sync in v1)
+- Anthropic SDK via server-side API route (never expose key client-side)
+- Web Speech API for voice transcription (on-device)
+- No external UI libs (no shadcn, MUI, etc.)
+
+## Core loop
+
+1. User types or speaks in compose card on home
+2. On save, POST to /api/parse with text + existing people list
+3. Server calls Claude Sonnet 4.6 with structured prompt
+4. Returns JSON: { primary_person, confidence, is_solo, sentiment, tags, ... }
+5. Client stores Entry in Dexie, creates new Person if needed
+6. Closeness algorithm recomputes locally
+7. Friends list re-ranks
+
+## Closeness algorithm (local)
+
+```ts
+weighted_sentiment = Σ(entry.sentiment * exp(-daysAgo/30)) / Σ(weights)
+freq_factor = min(entry_count / 10, 1.0)
+variety = distinct_tag_combos / 5
+closeness = clamp(weighted_sentiment * 0.6 + freq_factor * 3 + variety * 1, 0, 10)
+trend = closeness_now - closeness_7_days_ago
+```
+
+## Rules
+
+- DO NOT add features outside v1 scope without asking
+- DO NOT introduce generic AI-coded styling (purple gradients, glassmorphism, Inter font)
+- DO NOT use emoji in UI
+- DO NOT add dark mode in v1
+- DO NOT use external UI component libraries
+- DO use the exact palette and typography above
+- DO use Tabler outline icons only
+- DO keep IndexedDB as source of truth; React state mirrors it via useLiveQuery
+- DO call Claude through /api/parse server route, never client-side
+- DO preserve privacy: audio stays on device, only transcript text leaves
+- WHEN UNSURE about aesthetic, default to LESS chrome, not more
+
+## Taste anchor
+
+The home screen should look more like a Day One entry page than a Notion dashboard. Friend list rows should feel like lines in a notebook, not rows in a database. The mic FAB should feel like the only saturated thing on screen.
+
+See `/CLAUDE.md` for full product spec.

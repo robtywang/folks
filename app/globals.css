@@ -1,0 +1,185 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-cream: #FAF7F0;
+  --ink-primary: #1F1A14;
+  --ink-secondary: #8C7E5C;
+  --ink-tertiary: #B4A689;
+  --border-hair: #D9CFBC;
+  --accent-coral: #C8553D;
+  --accent-sage: #6F7D63;
+  /* Bright trend indicators — used only on rating arrows + sparklines so they
+     read clearly against the muted palette. */
+  --trend-up: #22C55E;
+  --trend-down: #EF4444;
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body {
+  background: var(--bg-cream);
+  color: var(--ink-primary);
+  font-family: var(--font-fraunces), Georgia, serif;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+}
+
+/* Hide default focus rings, replace with subtle ones */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 1px solid var(--accent-coral);
+  outline-offset: 2px;
+}
+
+/* Tabler icon size baseline */
+.ti {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* Blinking caret used in the live voice transcription view. */
+@keyframes blink-caret {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+.recording-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  vertical-align: -0.15em;
+  margin-left: 2px;
+  background: var(--accent-coral);
+  animation: blink-caret 1s step-end infinite;
+}
+
+/* Expanding ring around the mic while recording — the button itself becomes
+   the "we're listening" indicator. */
+@keyframes recording-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+.recording-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid var(--accent-coral);
+  pointer-events: none;
+  animation: recording-ring 1.4s cubic-bezier(0.16, 0.84, 0.44, 1) infinite;
+}
+
+.recording-ring-delayed {
+  animation-delay: 0.7s;
+}
+
+/* Wrong-passcode shake for the PinPad dot indicator. ±6px, ~300ms. */
+@keyframes pin-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+.pin-shake {
+  animation: pin-shake 300ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* Onboarding screen 2 sequential fade-in. Lines stay invisible until their
+   delay fires. */
+@keyframes onboarding-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.onboarding-fade-in {
+  opacity: 0;
+  animation: onboarding-fade-in 600ms ease-out both;
+}
+
+/* Onboarding screen 4 mic pulse — slow breathing while waiting for first tap. */
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.04); }
+}
+.mic-pulse {
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+
+/* First-folk slide-up message from bottom edge. */
+@keyframes folk-slide-up {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.folk-slide-up {
+  animation: folk-slide-up 400ms ease-out both;
+}
+.folk-fade-out {
+  animation: onboarding-fade-out 400ms ease-in both;
+}
+@keyframes onboarding-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Phone frame wraps all content. On mobile it just fills the viewport.
+   On desktop (>= 640px) it becomes a 430px rounded panel on a dark
+   backdrop so the prototype reads as a phone preview. */
+.phone-frame {
+  position: relative;
+  min-height: 100vh;
+  background: var(--bg-cream);
+}
+
+.phone-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle at 1px 1px, rgba(31, 26, 20, 0.025) 1px, transparent 0);
+  background-size: 3px 3px;
+  z-index: 0;
+}
+
+.phone-frame > * {
+  position: relative;
+  z-index: 1;
+}
+
+@media (min-width: 640px) {
+  html,
+  body {
+    background: #1f1a14;
+  }
+
+  body {
+    padding: 32px 16px;
+  }
+
+  .phone-frame {
+    max-width: 430px;
+    margin: 0 auto;
+    min-height: calc(100vh - 64px);
+    border-radius: 40px;
+    box-shadow:
+      0 30px 80px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(217, 207, 188, 0.08);
+    overflow: hidden;
+  }
+}
