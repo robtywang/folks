@@ -207,11 +207,12 @@ export function ComposeCard({
           interimTranscript += transcript;
         }
       }
+      // text holds only finalized chunks; the live italic suffix is rendered
+      // separately from `interim`. Without this split, an interim update was
+      // landing in both places and the words rendered twice.
       if (finalChunk) {
         baseText = baseText + finalChunk;
         setText(baseText);
-      } else {
-        setText(baseText + interimTranscript);
       }
       setInterim(interimTranscript);
     };
