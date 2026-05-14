@@ -29,6 +29,16 @@ body {
   color-scheme: light;
 }
 
+/* Adaptive '…' placeholder on the compose textarea. Pulses gently so the
+   empty page reads as "waiting for you" instead of as a static label. */
+@keyframes folks-adaptive-pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.65; }
+}
+.folks-adaptive-placeholder::placeholder {
+  animation: folks-adaptive-pulse 1.8s ease-in-out infinite;
+}
+
 /* Adaptive search input — dashed border while empty (reads as "waiting"),
    solidifies when the user types or focuses. The data-state attribute is
    toggled in React based on whether the input has content. */

@@ -149,12 +149,13 @@ export function ComposeCard({
     return Array.from(seen.values());
   })();
 
-  // Auto-resize textarea — taller floor so the box feels like a journal page.
+  // Auto-resize textarea — small floor so the writing line starts high on the
+  // page and travels downward as content grows.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${Math.max(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.max(el.scrollHeight, 56)}px`;
   }, [text]);
 
   // Auto-dismiss errors after 4s. Detection card sticks around until the user
@@ -481,8 +482,8 @@ export function ComposeCard({
               }}
               placeholder="…"
               disabled={isSaving || isCleaning}
-              rows={7}
-              className="relative w-full resize-none bg-transparent text-[16px] leading-relaxed text-ink-primary placeholder:italic placeholder:text-ink-tertiary focus:outline-none disabled:opacity-50"
+              rows={2}
+              className="folks-adaptive-placeholder relative w-full resize-none bg-transparent text-[16px] leading-relaxed text-ink-primary placeholder:italic placeholder:text-ink-tertiary focus:outline-none disabled:opacity-50"
               style={{ fontFamily: 'var(--font-fraunces)' }}
             />
           </div>
@@ -513,11 +514,11 @@ export function ComposeCard({
           </div>
         )}
 
-        {/* Dashed notebook-line separator — softer than a hairline, reads as
-            'unfinished page' rather than 'form element'. */}
+        {/* Solid writing-line under the active typing area. Reads as the line
+            you're writing on — moves down as the textarea auto-grows. */}
         <div
-          className="mt-5 mb-3"
-          style={{ borderTop: '1px dashed var(--border-hair)' }}
+          className="mt-3 mb-3"
+          style={{ borderTop: '1px solid var(--ink-primary)' }}
         />
 
         <div className="flex items-center justify-between">
@@ -572,15 +573,13 @@ export function ComposeCard({
                 }`}
                 style={{
                   background: isRecording ? 'var(--accent-coral)' : 'transparent',
-                  border: isRecording
-                    ? 'none'
-                    : '1px dashed var(--border-hair)',
+                  border: 'none',
                 }}
               >
                 <i
                   className={isRecording ? 'ti ti-player-stop' : 'ti ti-microphone'}
                   style={{
-                    fontSize: 18,
+                    fontSize: 22,
                     color: isRecording ? 'var(--bg-cream)' : 'var(--ink-secondary)',
                   }}
                 />
