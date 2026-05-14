@@ -220,7 +220,7 @@ body {
   overflow: hidden;
   white-space: nowrap;
   width: 0;
-  animation: folks-demo-type 9s steps(36, end) infinite;
+  animation: folks-demo-type 9s steps(42, end) infinite;
 }
 
 .folks-demo-typed-emphasis {

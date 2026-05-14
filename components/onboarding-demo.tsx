@@ -14,9 +14,9 @@ export function OnboardingDemo() {
       {/* ─── Compose mock ─────────────────────────────────────────── */}
       <div className="folks-demo-card folks-demo-compose">
         <div className="folks-demo-typed">
-          had coffee with{' '}
-          <span className="folks-demo-typed-emphasis">maya</span>, she seemed
-          off
+          long catch-up with{' '}
+          <span className="folks-demo-typed-emphasis">maya</span>, felt really
+          seen
           <span className="folks-demo-caret" />
         </div>
         <div className="folks-demo-hairline" />

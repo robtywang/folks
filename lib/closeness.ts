@@ -183,6 +183,86 @@ export function closenessHistory(
   return result;
 }
 
+// ── Sentiment trend ──────────────────────────────────────────────────────────
+
+export interface SentimentBucket {
+  /** Unix ms at the start of the week. */
+  weekStart: number;
+  /** Mean sentiment across entries in this week, or null if no entries. */
+  avg: number | null;
+  /** Count of entries that contributed. */
+  count: number;
+}
+
+export interface SentimentTrend {
+  buckets: SentimentBucket[];
+  /** Mean sentiment across all entries (lifetime). */
+  lifetimeAvg: number | null;
+  /** Mean sentiment across last 4 buckets with data. */
+  recentAvg: number | null;
+  /** recentAvg − (mean of prior 4 buckets with data). null if not enough data. */
+  delta: number | null;
+}
+
+/**
+ * Bucket entries into weekly averages, oldest-first. Empty weeks have
+ * `avg: null` so the renderer can draw a gap. Reports a delta between the most
+ * recent 4 weeks of data and the 4 before that — a stable comparison that's
+ * resilient to a quiet week or two.
+ */
+export function sentimentHistory(
+  entries: Entry[],
+  weeks: number = 12
+): SentimentTrend {
+  if (entries.length === 0) {
+    return { buckets: [], lifetimeAvg: null, recentAvg: null, delta: null };
+  }
+  const now = Date.now();
+  // Anchor the last bucket to "this week" so weekStart aligns to start of
+  // the rolling 7-day window. We bucket by floor((now - createdAt) / 7d).
+  const buckets: SentimentBucket[] = [];
+  for (let i = weeks - 1; i >= 0; i--) {
+    buckets.push({
+      weekStart: now - i * 7 * DAY_MS,
+      avg: null,
+      count: 0,
+    });
+  }
+  const totalByBucket = new Array(weeks).fill(0);
+  for (const e of entries) {
+    const daysAgoVal = (now - e.createdAt) / DAY_MS;
+    if (daysAgoVal < 0 || daysAgoVal >= weeks * 7) continue;
+    const bucketIndex = weeks - 1 - Math.floor(daysAgoVal / 7);
+    if (bucketIndex < 0 || bucketIndex >= weeks) continue;
+    totalByBucket[bucketIndex] += e.sentiment;
+    buckets[bucketIndex].count += 1;
+  }
+  for (let i = 0; i < weeks; i++) {
+    if (buckets[i].count > 0) {
+      buckets[i].avg = totalByBucket[i] / buckets[i].count;
+    }
+  }
+
+  const lifetimeAvg =
+    entries.reduce((s, e) => s + e.sentiment, 0) / entries.length;
+
+  const populated = buckets.filter((b) => b.avg !== null);
+  const lastFour = populated.slice(-4);
+  const priorFour = populated.slice(-8, -4);
+  const recentAvg =
+    lastFour.length > 0
+      ? lastFour.reduce((s, b) => s + (b.avg as number), 0) / lastFour.length
+      : null;
+  const priorAvg =
+    priorFour.length > 0
+      ? priorFour.reduce((s, b) => s + (b.avg as number), 0) / priorFour.length
+      : null;
+  const delta =
+    recentAvg !== null && priorAvg !== null ? recentAvg - priorAvg : null;
+
+  return { buckets, lifetimeAvg, recentAvg, delta };
+}
+
 // ── Person record persistence ────────────────────────────────────────────────
 
 export function closeness(entries: Entry[]): number {

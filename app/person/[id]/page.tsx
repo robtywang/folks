@@ -9,11 +9,14 @@ import {
   cadenceFor,
   closenessHistory,
   closenessState,
+  sentimentHistory,
   trajectoryFor,
   trendReason,
   type ClosenessState,
 } from '@/lib/closeness';
+import { SentimentTrend } from '@/components/sentiment-trend';
 import { generateReading, saveReading, updatePersonContext } from '@/lib/reading';
+import { generateInsights, saveInsights } from '@/lib/insights';
 import { removePerson, mergePerson } from '@/lib/save-entry';
 import { hasLockPin, isUnlocked } from '@/lib/lock';
 import { LockScreen } from '@/components/lock-screen';
@@ -81,6 +84,8 @@ export default function PersonProfile({
 
   // Reading state
   const [readingBusy, setReadingBusy] = useState(false);
+  const [insightsBusy, setInsightsBusy] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
   const [readingError, setReadingError] = useState<string | null>(null);
   const [recalibrating, setRecalibrating] = useState(false);
   const [editingContext, setEditingContext] = useState(false);
@@ -167,6 +172,20 @@ export default function PersonProfile({
     }
   }
 
+  async function handleGenerateInsights() {
+    if (!person || !entries) return;
+    setInsightsBusy(true);
+    setInsightsError(null);
+    try {
+      const r = await generateInsights(person, entries);
+      if (r) await saveInsights(person.id, r);
+    } catch (err) {
+      setInsightsError(err instanceof Error ? err.message : 'failed');
+    } finally {
+      setInsightsBusy(false);
+    }
+  }
+
   async function handleRemovePerson() {
     setRemoving(true);
     try {
@@ -228,6 +247,7 @@ export default function PersonProfile({
   const trajectory = state.status === 'stable' ? trajectoryFor(list) : null;
   const annotation = trajectory ? trendReason(list, trajectory.trendShort) : '';
   const history = closenessHistory(list, 9, 7); // ~60-day weekly sample
+  const sentimentTrend = sentimentHistory(list, 12); // 12-week sentiment chart
   const cadence = cadenceFor(list);
   const rank = ranked.findIndex((p) => p.id === id) + 1; // 1-indexed; 0 if not found
 
@@ -473,6 +493,97 @@ export default function PersonProfile({
           </p>
         )}
       </div>
+
+      {/* Analytics — sentiment trend + AI insight cards */}
+      {list.length > 0 && (
+        <div className="mt-10">
+          <div className="mb-2 flex items-center gap-3">
+            <span
+              className="text-[10px] uppercase tracking-widest text-ink-secondary"
+              style={{ fontFamily: 'var(--font-mono)' }}
+            >
+              analytics
+            </span>
+            <div className="h-px flex-1" style={{ background: 'var(--border-hair)' }} />
+          </div>
+          <SentimentTrend
+            buckets={sentimentTrend.buckets}
+            lifetimeAvg={sentimentTrend.lifetimeAvg}
+            recentAvg={sentimentTrend.recentAvg}
+            delta={sentimentTrend.delta}
+          />
+
+          {/* AI insight cards */}
+          {(person.insightCards && person.insightCards.length > 0) || list.length >= 3 ? (
+            <div className="mt-6">
+              <div
+                className="mb-2 flex items-center justify-between"
+              >
+                <span
+                  className="text-[10px] uppercase tracking-widest text-ink-tertiary"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
+                  patterns
+                </span>
+                {(person.insightCards?.length ?? 0) > 0 && (
+                  <button
+                    onClick={handleGenerateInsights}
+                    disabled={insightsBusy}
+                    className="text-[10px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    {insightsBusy ? 'thinking…' : 'rerun ↻'}
+                  </button>
+                )}
+              </div>
+
+              {person.insightCards && person.insightCards.length > 0 ? (
+                <ul className="space-y-2">
+                  {person.insightCards.map((insight, i) => (
+                    <li
+                      key={i}
+                      className="rounded-md px-3 py-2 text-[13px] italic leading-snug text-ink-primary"
+                      style={{
+                        fontFamily: 'var(--font-fraunces)',
+                        background: 'rgba(140, 126, 92, 0.06)',
+                        borderLeft: '2px solid var(--ink-tertiary)',
+                      }}
+                    >
+                      {insight}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <p
+                    className="text-[12px] italic text-ink-tertiary"
+                    style={{ fontFamily: 'var(--font-fraunces)' }}
+                  >
+                    surface patterns the ai sees in your entries.
+                  </p>
+                  <button
+                    onClick={handleGenerateInsights}
+                    disabled={insightsBusy}
+                    className="text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    {insightsBusy ? 'thinking…' : 'generate →'}
+                  </button>
+                </div>
+              )}
+
+              {insightsError && (
+                <p
+                  className="mt-2 text-[11px] italic text-accent-coral"
+                  style={{ fontFamily: 'var(--font-fraunces)' }}
+                >
+                  {insightsError}
+                </p>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {/* Entry timeline — the substance */}
       <div className="mt-10">

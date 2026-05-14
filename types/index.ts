@@ -62,6 +62,13 @@ export interface Person {
    * raw entries.
    */
   userContext?: string;
+  /**
+   * AI-generated short observational insights about behavioural patterns —
+   * e.g. "Maya is most energizing on weekends". Up to 3 strings, regenerated
+   * every 10 new entries. Cached so we don't burn API on every profile open.
+   */
+  insightCards?: string[];
+  insightsUpdatedAt?: number;
   isTransient: boolean;           // true if only one mention so far
 }
 
