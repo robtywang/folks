@@ -3,13 +3,15 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { ComposeCard } from '@/components/compose-card';
 import { LockedRecent } from '@/components/locked-recent';
 import { pruneAllOrphans } from '@/lib/save-entry';
 import { recomputeAll } from '@/lib/closeness';
 import { useLockState, hasLockPin } from '@/lib/lock';
-import { getMeta, setMeta } from '@/lib/db';
+import { db, getMeta, setMeta } from '@/lib/db';
 import type { SaveResult } from '@/lib/save-entry';
+import type { Entry } from '@/types';
 
 // Legacy localStorage key from v0 onboarding — we migrate it into Dexie meta
 // on first boot so existing users don't get re-onboarded.
@@ -27,6 +29,26 @@ function formatDate(): string {
   });
 }
 
+/** Unix-ms for the most recent Sunday at 00:00 local time. */
+function startOfWeekLocal(): number {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay()); // getDay: 0=Sun
+  return d.getTime();
+}
+
+/** Format the time-since-last-entry indicator. Returns null when hidden. */
+function formatLastEntryLabel(lastEntryAt: number | null): string | null {
+  if (lastEntryAt === null) return null;
+  const hours = (Date.now() - lastEntryAt) / 3_600_000;
+  if (hours < 24) return null;
+  if (hours < 168) {
+    const days = Math.floor(hours / 24);
+    return `LAST ENTRY · ${days} ${days === 1 ? 'DAY' : 'DAYS'} AGO`;
+  }
+  return 'LAST ENTRY · OVER A WEEK AGO';
+}
+
 export default function Home() {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
@@ -41,6 +63,65 @@ export default function Home() {
     personId: string;
     fading: boolean;
   } | null>(null);
+
+  // Retention indicators below the date header.
+  const lastEntry = useLiveQuery(
+    async () =>
+      (
+        await db.entries.orderBy('createdAt').reverse().limit(1).toArray()
+      )[0] ?? (null as Entry | null),
+    [],
+    null as Entry | null
+  );
+  const weekStart = startOfWeekLocal();
+  const entriesThisWeek = useLiveQuery(
+    async () =>
+      db.entries.where('createdAt').aboveOrEqual(weekStart).count(),
+    [weekStart],
+    0
+  );
+
+  // First-stable arrival editorial line. Backed by Meta.firstStableSeenAt
+  // which is set the first time any person reaches stable (entryCount >= 3).
+  // The line displays for 24h after the timestamp, then auto-hides forever.
+  const [firstStableSeenAt, setFirstStableSeenAt] = useState<number | null>(
+    null
+  );
+  const peopleCount = useLiveQuery(
+    async () => db.people.filter((p) => p.entryCount >= 3).count(),
+    [],
+    0
+  );
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      // If we already know the stable timestamp, no further work needed.
+      if (firstStableSeenAt !== null) return;
+      const stored = await getMeta<number>('firstStableSeenAt');
+      if (cancelled) return;
+      if (typeof stored === 'number') {
+        setFirstStableSeenAt(stored);
+        return;
+      }
+      // Not yet stamped — check current people. If any are stable, stamp now.
+      if (peopleCount > 0) {
+        const now = Date.now();
+        await setMeta('firstStableSeenAt', now);
+        if (!cancelled) setFirstStableSeenAt(now);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [peopleCount, firstStableSeenAt]);
+
+  const lastEntryLabel = formatLastEntryLabel(lastEntry?.createdAt ?? null);
+  const weekLabel = `${entriesThisWeek} ${
+    entriesThisWeek === 1 ? 'ENTRY' : 'ENTRIES'
+  } THIS WEEK`;
+  const showFirstStableLine =
+    firstStableSeenAt !== null &&
+    Date.now() - firstStableSeenAt < 24 * 60 * 60 * 1000;
 
   // Boot: gate onboarding by passcode presence. If the user has a passcode set,
   // they're a returning user and skip onboarding. The legacy completed-flag
@@ -195,8 +276,43 @@ export default function Home() {
         </h1>
       </div>
 
+      {/* Retention indicators — week counter left, last-entry right.
+          Balanced left/right pair beneath the date. */}
+      <div
+        className="mt-2 flex items-center justify-between"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10.5,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: 'var(--ink-tertiary)',
+        }}
+      >
+        <span>{weekLabel}</span>
+        {lastEntryLabel && <span>{lastEntryLabel}</span>}
+      </div>
+
+      {/* First-stable arrival editorial line — visible for 24h after the
+          user's first person hits stable (entryCount >= 3). */}
+      {showFirstStableLine && (
+        <p
+          className="mt-5 text-center"
+          style={{
+            fontFamily: 'var(--font-fraunces)',
+            fontStyle: 'italic',
+            fontSize: 17,
+            lineHeight: 1.45,
+            color: 'var(--ink-primary)',
+          }}
+        >
+          your folks list has its first name.
+        </p>
+      )}
+
       {/* Compose card */}
-      <div className="mt-8">
+      <div
+        className={showFirstStableLine ? 'mt-5' : 'mt-8'}
+      >
         <ComposeCard
           micPulse={showMicPulse}
           onInteraction={step4Active ? handleStep4Interaction : undefined}
