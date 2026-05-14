@@ -58,14 +58,16 @@ export function OnboardingDemo() {
           <span className="folks-demo-rank-arrow">↑</span>
         </div>
 
-        {/* Alex — gets shifted down when maya rises */}
+        {/* Alex — gets shifted down when maya rises. Starts at 5.5 so the
+            initial ranking is internally consistent (sarah 7.2 > alex 5.5 >
+            maya 5.2), then maya overtakes him at 6.4. */}
         <div className="folks-demo-rank folks-demo-rank-alex">
           <span className="folks-demo-rank-num">
             <span className="folks-demo-rank-num-before">02</span>
             <span className="folks-demo-rank-num-after">03</span>
           </span>
           <span className="folks-demo-rank-name">alex</span>
-          <span className="folks-demo-rank-score">4.9</span>
+          <span className="folks-demo-rank-score">5.5</span>
         </div>
       </div>
     </div>
