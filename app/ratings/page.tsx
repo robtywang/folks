@@ -199,7 +199,7 @@ export default function RatingsPage() {
   if (!unlocked) {
     return (
       <LockScreen
-        title="ratings are locked"
+        title="your folks are locked"
         onUnlock={() => setLocalUnlocked(true)}
       />
     );
@@ -247,32 +247,48 @@ export default function RatingsPage() {
       />
 
       {totalRows === 0 ? (
-        <div className="mt-12 py-12 text-center">
+        <div className="mt-16 px-2 text-center">
           <p
-            className="text-[14px] italic"
+            className="text-[15px] italic leading-snug"
+            style={{ fontFamily: 'var(--font-fraunces)', color: 'var(--ink-primary)' }}
+          >
+            your folks haven't shown up yet.
+          </p>
+          <p
+            className="mt-3 text-[13px] italic leading-snug"
             style={{ fontFamily: 'var(--font-fraunces)', color: '#8C7E5C' }}
           >
-            no folks yet — log entries about people<br />to see them ranked here.
+            log a few entries on the home screen — anyone you mention by name
+            appears here. they start out forming, and unlock a ranking after
+            3 entries each.
           </p>
-          <button
-            onClick={handleSeed}
-            disabled={seeding}
-            className="mt-5 text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
+          <Link
+            href="/"
+            className="mt-6 inline-block text-[11px] uppercase tracking-widest text-accent-coral"
             style={{ fontFamily: 'var(--font-mono)' }}
           >
-            {seeding ? 'loading…' : 'load test data →'}
-          </button>
+            write your first entry →
+          </Link>
         </div>
       ) : (
         <>
-          {/* Edge case: only forming entries — show a gentle prompt */}
+          {/* Edge case: only forming entries — show the "what is forming" copy
+              up top so the user understands why nothing is ranked yet. */}
           {ranked.length === 0 && forming.length > 0 && (
-            <p
-              className="mt-8 ml-[52px] text-[14px] italic"
-              style={{ fontFamily: 'var(--font-fraunces)', color: '#8C7E5C' }}
-            >
-              your circle is forming. keep writing.
-            </p>
+            <div className="mt-10 px-2 text-center">
+              <p
+                className="text-[14px] italic leading-snug"
+                style={{ fontFamily: 'var(--font-fraunces)', color: 'var(--ink-primary)' }}
+              >
+                your folks are forming.
+              </p>
+              <p
+                className="mt-2 text-[12px] italic leading-snug"
+                style={{ fontFamily: 'var(--font-fraunces)', color: '#8C7E5C' }}
+              >
+                ranking unlocks once each person has 3 entries. keep writing.
+              </p>
+            </div>
           )}
 
           {/* Ranked rows */}
