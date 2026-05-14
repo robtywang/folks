@@ -120,7 +120,7 @@ export default function Home() {
   }
 
   if (!checked) {
-    return <main className="mx-auto min-h-screen w-full max-w-md" />;
+    return <main className="mx-auto h-[100svh] w-full max-w-md overflow-hidden" />;
   }
 
   // Home is intentionally never lock-gated — compose stays open so capture
@@ -130,7 +130,7 @@ export default function Home() {
   const showMicPulse = step4Active && !hasInteractedStep4;
 
   return (
-    <main className="relative mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-6">
+    <main className="relative mx-auto flex h-[100svh] w-full max-w-md flex-col overflow-hidden px-4 pb-6 pt-6">
       {/* Top bar */}
       <header className="grid grid-cols-3 items-center text-ink-secondary">
         <div className="justify-self-start">

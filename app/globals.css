@@ -141,6 +141,13 @@ body {
 /* Phone frame wraps all content. On mobile it just fills the viewport.
    On desktop (>= 640px) it becomes a 430px rounded panel on a dark
    backdrop so the prototype reads as a phone preview. */
+html,
+body {
+  /* Kill iOS rubber-band overscroll. Pages still scroll if their content
+     overflows, but the body doesn't bounce. Native-app feel. */
+  overscroll-behavior: none;
+}
+
 .phone-frame {
   position: relative;
   min-height: 100svh;
