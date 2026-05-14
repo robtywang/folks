@@ -10,56 +10,76 @@ interface InsightsRequest {
     avgSentiment: number;
     userContext?: string | null;
   };
-  entries: Array<{
+  /** Pre-detected statistical patterns. The model phrases these; it does not find them. */
+  patterns: Array<{
+    fact: string;
+    support: number;
+    delta?: number;
+  }>;
+  /** Small entry sample for tonal context only (not for pattern detection). */
+  entrySample: Array<{
     text: string;
     sentiment: number;
     tags: string[];
     daysAgo: number;
-    weekday: string; // 'mon' | 'tue' | ...
-    hour: number; // 0–23
+    weekday: string;
   }>;
 }
 
 function buildPrompt(body: InsightsRequest): string {
-  const { person, entries } = body;
-  const entryLines = entries
+  const { person, patterns, entrySample } = body;
+
+  const patternLines = patterns
+    .map((p, i) => {
+      const supportFrag =
+        p.delta !== undefined
+          ? ` (n=${p.support}, delta=${p.delta.toFixed(1)})`
+          : ` (n=${p.support})`;
+      return `${i + 1}. ${p.fact}${supportFrag}`;
+    })
+    .join('\n');
+
+  const sampleLines = entrySample
     .map(
       (e, i) =>
-        `${i + 1}. [${e.daysAgo}d ago, ${e.weekday} ${e.hour}:00, sentiment ${e.sentiment}/10, tags: ${
+        `${i + 1}. [${e.daysAgo}d ago, ${e.weekday}, sentiment ${e.sentiment}/10, tags: ${
           e.tags.join(', ') || 'none'
         }] "${e.text}"`
     )
     .join('\n');
 
-  return `You generate concise behavioural insight cards for a friends-tracker app.
+  return `You phrase pre-detected behavioural patterns as short observational lines for a friends-tracker app.
 
-Given entries about ${person.name}, return 2–3 short observational insights about patterns you can see. Each insight is one sentence, lowercase, observational, in a quiet literary voice — like a Co-Star reading.
+CRITICAL: You do NOT find patterns. The statistical analysis has already been done. Your only job is to render the facts below as natural-sounding one-liners. If you state something that isn't in the facts list, you are inventing — do not do this.
 
 PERSON: ${person.name}
 - ${person.entryCount} entries logged
 - avg sentiment ${person.avgSentiment.toFixed(1)} / 10
 ${person.userContext ? `\nUSER-PROVIDED CONTEXT:\n"${person.userContext}"\n` : ''}
 
-ENTRIES (most recent first):
-${entryLines}
+DETECTED PATTERNS (n = entries supporting the pattern):
+${patternLines || '(none — return an empty insights array)'}
+
+ENTRY SAMPLE (tonal context only, NOT for finding new patterns):
+${sampleLines}
 
 Return JSON only, no preamble:
 {
   "insights": [
-    "<one-sentence observation, ~60-100 chars, lowercase>",
+    "<one-sentence rendering of pattern 1, ~60-100 chars, lowercase>",
     "<another>",
     "<optional third>"
   ]
 }
 
 Rules:
-- Each insight surfaces a PATTERN, not a single moment. e.g. "${person.name} is most energizing on weekends" not "${person.name} was fun on saturday."
-- Patterns to look for: day-of-week sentiment, time-of-day sentiment, recurring tag combos, sentiment trajectory, response to specific contexts (work / family / dating / etc.), gaps between entries.
-- Never advisory ("you should reach out"). Never therapy-speak. Just observation.
+- Render each detected pattern as one short observational line. One pattern → one insight. Maximum 3 insights.
 - Use the person's first name in lowercase.
-- If you genuinely can't see 3 patterns, return 2. If not even 2, return 1. Don't invent.
-- Don't quote entries directly — paraphrase.
-- Skip insights that just restate the average sentiment.`;
+- Acknowledge weak signal when support is low. If n < 5, phrase as "early signal:" or "so far:" instead of as a confident pattern.
+- Never advisory ("you should reach out"). Just observation.
+- Don't quote entries directly. Paraphrase if you reference one.
+- If the patterns list is empty, return an empty insights array. Do not invent.
+- Don't restate the average sentiment as an insight.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -69,8 +89,13 @@ export async function POST(req: NextRequest) {
     }
 
     const body: InsightsRequest = await req.json();
-    if (!body.entries || body.entries.length < 3) {
-      return NextResponse.json({ error: 'not_enough_entries' }, { status: 400 });
+    if (!body.patterns || !Array.isArray(body.patterns)) {
+      return NextResponse.json({ error: 'bad_payload' }, { status: 400 });
+    }
+
+    // Nothing detected locally — don't burn a Claude call.
+    if (body.patterns.length === 0) {
+      return NextResponse.json({ insights: [] });
     }
 
     const message = await client.messages.create({
