@@ -252,8 +252,12 @@ export default function PersonProfile({
   const rank = ranked.findIndex((p) => p.id === id) + 1; // 1-indexed; 0 if not found
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-6">
+    <main className="mx-auto flex h-[100svh] w-full max-w-md flex-col overflow-hidden px-4 pt-6">
       <Topbar />
+
+      {/* Scrollable content area — page itself is locked, only this region
+          moves so the topbar stays fixed in view. */}
+      <div className="-mx-4 flex-1 overflow-y-auto px-4 pb-12">
 
       {/* Identity */}
       <div className="mt-10 flex items-center gap-4">
@@ -820,6 +824,7 @@ export default function PersonProfile({
             </div>
           </div>
         ) : null}
+      </div>
       </div>
     </main>
   );

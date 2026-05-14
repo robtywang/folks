@@ -23,13 +23,25 @@
 
 html,
 body {
-  background: var(--bg-cream);
+  background-color: var(--bg-cream);
   color: var(--ink-primary);
   font-family: var(--font-fraunces), Georgia, serif;
+  /* Force light color-scheme so iOS PWA never renders a default-white
+     overscroll layer behind our cream content. */
+  color-scheme: light;
+}
+
+html {
+  /* In iOS PWA standalone mode, the html element is the root surface that
+     shows through any overscroll. Lock it to the dynamic viewport height
+     with a cream backdrop so no white is ever visible. */
+  background-color: var(--bg-cream);
+  min-height: 100dvh;
 }
 
 body {
-  min-height: 100vh;
+  background-color: var(--bg-cream);
+  min-height: 100dvh;
   margin: 0;
 }
 
