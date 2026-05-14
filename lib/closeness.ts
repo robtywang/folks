@@ -11,7 +11,15 @@ const FREQ_SATURATION = 50;
 const SAMPLE_SIZE_THRESHOLD = 3;
 const DEPTH_TAGS = ['vulnerable', 'honest', 'present', 'supportive'];
 const INTENSITY_PIVOT = 5.5;
-const MAX_INTENSITY = 4.5; // |sentiment - 5.5| max when sentiment is 1 or 10
+// max positive-side intensity contribution (sentiment 10 - pivot 5.5)
+const MAX_POSITIVE_INTENSITY = 4.5;
+
+// Severity → harm. Squared so 3 is 9× worse than 1; recency-decayed.
+const SEVERITY_PENALTY_SCALE = 0.4;
+const SEVERITY_PENALTY_CAP = -4.0;
+const SEVERE_CEILING_LOOKBACK_DAYS = 30;
+const SEVERE_CEILING_LEVEL = 3;
+const SEVERE_CEILING_VALUE = 3.0;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function daysAgo(timestamp: number, asOfTime: number = Date.now()): number {
@@ -24,21 +32,27 @@ function clamp(v: number, min: number, max: number): number {
 // ── Core: two-axis closeness ─────────────────────────────────────────────────
 
 export interface ClosenessResult {
-  /** Long-window, valence-free score 0–10. Measures emotional presence. */
+  /** Long-window score 0–10. Positive engagement + frequency + depth. */
   base: number;
-  /** Short-window adjustment, bounded ±MAX_PERTURBATION. */
+  /** Short-window sentiment adjustment, bounded ±MAX_PERTURBATION. */
   perturbation: number;
-  /** What the UI displays. clamped 0–10. */
+  /** Harm penalty (≤ 0). Squared severity × recency-decay, summed and capped. */
+  severityPenalty: number;
+  /** What the UI displays. clamped 0–10, with severe-recent ceiling applied. */
   display: number;
 }
 
 /**
- * Baseline closeness. Long window, no valence: how much this person occupies
- * your bandwidth regardless of whether the entries are warm or rough.
+ * Baseline closeness. Long window, asymmetric: only POSITIVE engagement adds
+ * to the base. Negative sentiment is captured by `sentimentPerturbation` and
+ * `severityPenalty` separately. This matches the user's intuition that "Violet
+ * hated me" shouldn't bump closeness more than "Violet gave me a cookie."
  *
- * Intensity = |sentiment - 5.5| so fights and warmth both register; flat 5s
- * score low. Frequency is log-shaped so a 50-entry friend stays distinct
- * from a 10-entry friend. Depth bonus from vulnerable / honest tags.
+ * Components:
+ *   - Positive intensity: weighted average of max(0, sentiment - 5.5).
+ *     Entries at or below 5.5 contribute 0 to base intensity.
+ *   - Frequency: log-scaled count of entries in the last 90 days.
+ *   - Depth: % of entries carrying vulnerable / honest / present / supportive tags.
  */
 export function baseClosenessFor(
   entries: Entry[],
@@ -47,15 +61,18 @@ export function baseClosenessFor(
   const valid = entries.filter((e) => e.createdAt <= asOfTime);
   if (valid.length === 0) return 0;
 
-  let weightedIntensity = 0;
+  let weightedPositive = 0;
   let totalWeight = 0;
   for (const e of valid) {
     const decay = Math.exp(-daysAgo(e.createdAt, asOfTime) / HALF_LIFE_DAYS);
-    weightedIntensity += Math.abs(e.sentiment - INTENSITY_PIVOT) * decay;
+    // Asymmetric: only positive emotion adds to base. Negative is handled
+    // by perturbation + severity, not by the long-window base.
+    const positiveValence = Math.max(0, e.sentiment - INTENSITY_PIVOT);
+    weightedPositive += positiveValence * decay;
     totalWeight += decay;
   }
-  const intensityScore = totalWeight > 0 ? weightedIntensity / totalWeight : 0;
-  const intensityNorm = Math.min(intensityScore / MAX_INTENSITY, 1);
+  const positiveScore = totalWeight > 0 ? weightedPositive / totalWeight : 0;
+  const positiveNorm = Math.min(positiveScore / MAX_POSITIVE_INTENSITY, 1);
 
   const recentCount = valid.filter(
     (e) => daysAgo(e.createdAt, asOfTime) <= RECENT_WINDOW_DAYS
@@ -67,11 +84,51 @@ export function baseClosenessFor(
   );
   const depthNorm = depthEntries.length / valid.length;
 
-  // Frequency weighted higher than intensity — "people you write about a lot"
-  // is the most reliable closeness signal. Intensity still matters (deep
-  // sporadic relationships exist) but doesn't dominate.
-  const composite = intensityNorm * 0.3 + freqNorm * 0.55 + depthNorm * 0.15;
+  // Frequency-dominant; positive-engagement intensity contributes meaningfully
+  // but isn't the lead. Depth provides a small kicker for vulnerable/honest
+  // relationships.
+  const composite = positiveNorm * 0.3 + freqNorm * 0.55 + depthNorm * 0.15;
   return clamp(composite * 10, 0, 10);
+}
+
+/**
+ * Sum of severity² × scale × recency-decay across all entries. Returns a
+ * non-positive number (0 if no harmful entries). Capped at SEVERITY_PENALTY_CAP
+ * so a single severe event can't entirely zero the score; only repeated harm
+ * tanks it. Recency-decayed so old severe events fade as positive entries
+ * accumulate (people reconcile).
+ */
+export function severityPenaltyFor(
+  entries: Entry[],
+  asOfTime: number = Date.now()
+): number {
+  let raw = 0;
+  for (const e of entries) {
+    if (e.createdAt > asOfTime) continue;
+    const severity = e.severity ?? 0;
+    if (severity === 0) continue;
+    const decay = Math.exp(-daysAgo(e.createdAt, asOfTime) / HALF_LIFE_DAYS);
+    raw += severity * severity * SEVERITY_PENALTY_SCALE * decay;
+  }
+  return Math.max(-raw, SEVERITY_PENALTY_CAP);
+}
+
+/**
+ * True if any severity-3 entry exists within the lookback window. Used to
+ * apply a hard display ceiling so the rating doesn't lie about how bad things
+ * are right now.
+ */
+export function hasRecentSevere(
+  entries: Entry[],
+  asOfTime: number = Date.now()
+): boolean {
+  const cutoff = asOfTime - SEVERE_CEILING_LOOKBACK_DAYS * DAY_MS;
+  return entries.some(
+    (e) =>
+      e.createdAt >= cutoff &&
+      e.createdAt <= asOfTime &&
+      (e.severity ?? 0) >= SEVERE_CEILING_LEVEL
+  );
 }
 
 /**
@@ -100,8 +157,14 @@ export function closenessFor(
 ): ClosenessResult {
   const base = baseClosenessFor(entries, asOfTime);
   const perturbation = sentimentPerturbation(entries, asOfTime);
-  const display = clamp(base + perturbation, 0, 10);
-  return { base, perturbation, display };
+  const severityPenalty = severityPenaltyFor(entries, asOfTime);
+  let display = clamp(base + perturbation + severityPenalty, 0, 10);
+  // Hard ceiling when a severity-3 event happened recently — the rating
+  // should not lie about how bad things are right now.
+  if (hasRecentSevere(entries, asOfTime)) {
+    display = Math.min(display, SEVERE_CEILING_VALUE);
+  }
+  return { base, perturbation, severityPenalty, display };
 }
 
 // ── Sample-size states ───────────────────────────────────────────────────────

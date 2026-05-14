@@ -39,6 +39,17 @@ export interface Entry {
    * into the few-shot examples on future parse calls.
    */
   aiPredictedSentiment?: number;
+  /**
+   * Severity of harm the entry describes, scaled 0–3. Drives a non-linear
+   * (squared) penalty in the closeness algorithm so violence/betrayal hits
+   * dramatically harder than verbal slights.
+   *   0 — normal (default)
+   *   1 — mild conflict, annoyance, verbal slight
+   *   2 — trust violation: lying, manipulation, ghosting after vulnerability
+   *   3 — physical violence, abuse, severe betrayal
+   * Old entries (pre-feature) have undefined here; algorithm treats undefined as 0.
+   */
+  severity?: 0 | 1 | 2 | 3;
 }
 
 export interface Person {
@@ -85,6 +96,8 @@ export interface ParseResponse {
   confidence: number;
   is_solo: boolean;
   sentiment: number;
+  /** 0–3 harm severity, see Entry.severity for scale. Defaults to 0. */
+  severity: 0 | 1 | 2 | 3;
   tags: string[];
   additional_people: string[];
   context_summary: string;

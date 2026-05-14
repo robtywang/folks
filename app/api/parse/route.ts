@@ -61,6 +61,7 @@ Return JSON only, no preamble:
   "confidence": <0.0 to 1.0>,
   "is_solo": boolean,
   "sentiment": <integer 1-10>,
+  "severity": <integer 0 | 1 | 2 | 3>,
   "tags": [<from fixed vocabulary, max 3>],
   "additional_people": [<other people mentioned secondarily>],
   "context_summary": "<short phrase capturing the moment>"
@@ -75,7 +76,13 @@ Rules:
 - If primary_person is a new name not in the list, set is_new_person: true
 - Sentiment: 1-3 negative/draining, 4-6 neutral, 7-10 positive/warm
 - Return empty tags array if unsure
-- Confidence reflects how certain you are about the person attribution`;
+- Confidence reflects how certain you are about the person attribution
+- Severity rates the harm the OTHER PERSON caused, not the user's reaction:
+    0 — normal entry, no harmful action (default — use this for the vast majority of entries)
+    1 — mild conflict: verbal slights, minor disagreements, friction
+    2 — trust violation: lying, manipulation, ghosting after vulnerability, breaking a meaningful promise
+    3 — severe harm: physical violence, abuse, severe betrayal, threatening behavior
+  Default to 0 unless the entry clearly describes the other person doing harm. Solo entries: severity 0.`;
 }
 
 export async function POST(req: NextRequest) {

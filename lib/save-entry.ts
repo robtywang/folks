@@ -72,6 +72,7 @@ export async function saveEntry(text: string): Promise<SaveResult> {
     aiConfidence: parsed.confidence,
     userConfirmed: false,
     additionalPeople: parsed.additional_people,
+    severity: parsed.severity ?? 0,
     // Snapshot what the AI originally said — never mutated. Comparing this to
     // entry.personId / entry.sentiment later tells us when the user corrected
     // the AI, which feeds future few-shot examples.
@@ -140,15 +141,17 @@ export async function updateEntryText(
   const entry = await db.entries.get(entryId);
   if (!entry) throw new Error('Entry not found');
 
-  // Re-parse to refresh sentiment + tags from the new text. If parse fails
-  // (no API key, network blip), fall back to keeping the existing values so
-  // the edit still saves.
+  // Re-parse to refresh sentiment + tags + severity from the new text. If
+  // parse fails (no API key, network blip), fall back to keeping the existing
+  // values so the edit still saves.
   let nextSentiment = entry.sentiment;
   let nextTags = entry.tags;
+  let nextSeverity = entry.severity ?? 0;
   try {
     const { parsed } = await parseEntry(trimmed);
     nextSentiment = parsed.sentiment;
     nextTags = parsed.tags;
+    nextSeverity = parsed.severity ?? 0;
   } catch (err) {
     console.warn('Re-parse on text edit failed; keeping old values:', err);
   }
@@ -157,6 +160,7 @@ export async function updateEntryText(
     text: trimmed,
     sentiment: nextSentiment,
     tags: nextTags,
+    severity: nextSeverity,
     updatedAt: Date.now(),
     userConfirmed: true,
   });
