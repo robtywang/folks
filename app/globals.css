@@ -312,11 +312,17 @@ body {
   left: 14px;
   right: 14px;
   display: grid;
-  grid-template-columns: 24px 1fr auto auto;
+  /* Last column is fixed so the score column lands at the same x on every row,
+     whether or not that row has an arrow. */
+  grid-template-columns: 24px 1fr auto 14px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   height: 28px;
   font-size: 13px;
+}
+
+.folks-demo-rank-arrow {
+  justify-self: end;
 }
 
 .folks-demo-rank-num {
