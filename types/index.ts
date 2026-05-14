@@ -32,6 +32,13 @@ export interface Entry {
    * personId to detect user corrections — drives the in-context learning loop.
    */
   aiPredictedPersonName?: string | null;
+  /**
+   * The sentiment value the AI originally assigned. Captured at parse time
+   * and never mutated. Comparing it to the current sentiment lets us tell
+   * when the user explicitly corrected the AI via the check-in slider — feeds
+   * into the few-shot examples on future parse calls.
+   */
+  aiPredictedSentiment?: number;
 }
 
 export interface Person {

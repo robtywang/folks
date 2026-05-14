@@ -29,6 +29,37 @@ body {
   color-scheme: light;
 }
 
+/* Native range styled to match the journal aesthetic. Thin track, coral
+   thumb. Used by the feedback check-in slider. */
+.folks-feedback-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+}
+.folks-feedback-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-coral);
+  border: 2px solid var(--bg-cream);
+  box-shadow: 0 1px 3px rgba(31, 26, 20, 0.18);
+  cursor: pointer;
+}
+.folks-feedback-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent-coral);
+  border: 2px solid var(--bg-cream);
+  box-shadow: 0 1px 3px rgba(31, 26, 20, 0.18);
+  cursor: pointer;
+  border-style: solid;
+}
+
 /* Faint coral chip applied to known person names in the compose textarea.
    The overlay div renders these behind the textarea so the highlight reads
    even though the caret + actual text live on the textarea layer above. */

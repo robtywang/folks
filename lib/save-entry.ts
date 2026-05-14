@@ -73,8 +73,10 @@ export async function saveEntry(text: string): Promise<SaveResult> {
     userConfirmed: false,
     additionalPeople: parsed.additional_people,
     // Snapshot what the AI originally said — never mutated. Comparing this to
-    // entry.personId later tells us when the user corrected the AI.
+    // entry.personId / entry.sentiment later tells us when the user corrected
+    // the AI, which feeds future few-shot examples.
     aiPredictedPersonName: parsed.primary_person ?? null,
+    aiPredictedSentiment: parsed.sentiment,
   };
 
   await db.entries.put(entry);

@@ -10,6 +10,7 @@ import {
   type SaveResult,
 } from '@/lib/save-entry';
 import { SentimentSlider } from './sentiment-slider';
+import { FeedbackCheckIn } from './feedback-check-in';
 
 type Status =
   | 'idle'
@@ -74,6 +75,7 @@ export function ComposeCard({
   const [editingAttribution, setEditingAttribution] = useState(false);
   const [newPersonInput, setNewPersonInput] = useState('');
   const [attributionConfirmed, setAttributionConfirmed] = useState(false);
+  const [feedbackHandled, setFeedbackHandled] = useState(false);
   // Inline "+ different X" affordance inside the name-clash picker.
   const [addingVariant, setAddingVariant] = useState(false);
   const [variantInput, setVariantInput] = useState('');
@@ -183,6 +185,7 @@ export function ComposeCard({
     setEditingAttribution(false);
     setNewPersonInput('');
     setAttributionConfirmed(false);
+    setFeedbackHandled(false);
     setAddingVariant(false);
     setVariantInput('');
   }
@@ -391,6 +394,7 @@ export function ComposeCard({
       const r = await saveEntry(text);
       setResult(r);
       setAttributionConfirmed(false); // reset for the new detection
+      setFeedbackHandled(false);
       setText('');
       try {
         localStorage.removeItem('folks_compose_draft');
@@ -930,6 +934,29 @@ export function ComposeCard({
                     </button>
                   )}
                 </div>
+              );
+            })()}
+
+          {/* Emotional check-in — surfaces when the entry reads as heavy
+              (low AI sentiment or a stress-flagged tag). The user's confirmed
+              value overrides the AI's number and gets logged as a correction
+              signal that future parses can calibrate against. */}
+          {!feedbackHandled &&
+            (() => {
+              const HEAVY_TAGS = ['draining', 'exhausting', 'anxious', 'cold'];
+              const isHeavy =
+                result.entry.sentiment <= 4 ||
+                result.entry.tags.some((t) => HEAVY_TAGS.includes(t));
+              if (!isHeavy) return null;
+              return (
+                <FeedbackCheckIn
+                  initial={result.entry.sentiment}
+                  onConfirm={(v) => {
+                    void handleSentimentChange(v);
+                    setFeedbackHandled(true);
+                  }}
+                  onDismiss={() => setFeedbackHandled(true)}
+                />
               );
             })()}
 
