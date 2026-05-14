@@ -415,14 +415,10 @@ export function ComposeCard({
 
   return (
     <div className="w-full">
-      <div
-        className="relative rounded-xl border bg-white/40 px-5 py-5 sm:px-6 sm:py-6"
-        style={{
-          borderColor: 'var(--border-hair)',
-          boxShadow:
-            'inset 0 1px 0 rgba(255,255,255,0.6), 0 1px 2px rgba(31,26,20,0.04), 0 6px 16px rgba(31,26,20,0.04)',
-        }}
-      >
+      {/* No box, no border. Just a writing surface that adapts to state.
+          Dashed underline below the textarea reads as a notebook line —
+          waiting, not chrome. */}
+      <div className="relative pt-2">
         {isRecording ? (
           /* Live transcription view — replaces the textarea while recording so
              the words appear in the same space they would once committed.
@@ -483,7 +479,7 @@ export function ComposeCard({
                 if (status !== 'saving') setStatus('typing');
                 onInteraction?.();
               }}
-              placeholder="what's on your mind?"
+              placeholder="…"
               disabled={isSaving || isCleaning}
               rows={7}
               className="relative w-full resize-none bg-transparent text-[16px] leading-relaxed text-ink-primary placeholder:italic placeholder:text-ink-tertiary focus:outline-none disabled:opacity-50"
@@ -517,10 +513,11 @@ export function ComposeCard({
           </div>
         )}
 
-        {/* Letterhead hairline separating the writing area from the action row */}
+        {/* Dashed notebook-line separator — softer than a hairline, reads as
+            'unfinished page' rather than 'form element'. */}
         <div
-          className="mt-5 mb-3 h-px"
-          style={{ background: 'var(--border-hair)' }}
+          className="mt-5 mb-3"
+          style={{ borderTop: '1px dashed var(--border-hair)' }}
         />
 
         <div className="flex items-center justify-between">
@@ -570,18 +567,22 @@ export function ComposeCard({
                 }}
                 disabled={isSaving}
                 aria-label={isRecording ? 'Stop recording' : 'Start voice entry'}
-                className={`relative flex h-16 w-16 items-center justify-center rounded-full transition-transform hover:scale-[1.04] active:scale-95 disabled:opacity-50 ${
+                className={`relative flex h-11 w-11 items-center justify-center rounded-full transition-all hover:scale-[1.04] active:scale-95 disabled:opacity-50 ${
                   micPulse ? 'mic-pulse' : ''
                 }`}
                 style={{
-                  background: 'var(--accent-coral)',
-                  boxShadow:
-                    'inset 0 1px 0 rgba(255,255,255,0.22), 0 2px 4px rgba(31,26,20,0.08), 0 12px 24px -6px rgba(200, 85, 61, 0.38)',
+                  background: isRecording ? 'var(--accent-coral)' : 'transparent',
+                  border: isRecording
+                    ? 'none'
+                    : '1px dashed var(--border-hair)',
                 }}
               >
                 <i
                   className={isRecording ? 'ti ti-player-stop' : 'ti ti-microphone'}
-                  style={{ fontSize: 28, color: 'var(--bg-cream)' }}
+                  style={{
+                    fontSize: 18,
+                    color: isRecording ? 'var(--bg-cream)' : 'var(--ink-secondary)',
+                  }}
                 />
               </button>
             </div>
