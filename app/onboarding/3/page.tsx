@@ -120,7 +120,7 @@ export default function OnboardingStep3() {
   const showBack = step === '3a' || step === '3b' || step === '3c';
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col px-6 pt-6">
+    <main className="mx-auto flex h-[100svh] w-full max-w-md flex-col overflow-hidden px-6 pt-6">
       <header className="flex items-center" style={{ minHeight: '24px' }}>
         {showBack && (
           <button

@@ -7,7 +7,7 @@ export default function OnboardingStep1() {
   const router = useRouter();
 
   return (
-    <main className="relative mx-auto flex min-h-screen w-full max-w-md flex-col px-6 pt-6">
+    <main className="relative mx-auto flex h-[100svh] w-full max-w-md flex-col overflow-hidden px-6 pt-6">
       {/* Top spacer ~30% */}
       <div style={{ flex: '0 0 30%' }} aria-hidden="true" />
 
