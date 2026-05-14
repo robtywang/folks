@@ -11,7 +11,14 @@ import {
 } from '@/lib/save-entry';
 import { SentimentSlider } from './sentiment-slider';
 
-type Status = 'idle' | 'typing' | 'recording' | 'saving' | 'result' | 'error';
+type Status =
+  | 'idle'
+  | 'typing'
+  | 'recording'
+  | 'cleaning' // post-recording, waiting for /api/punctuate to clean transcript
+  | 'saving'
+  | 'result'
+  | 'error';
 
 interface ComposeCardProps {
   /** Onboarding step 4: gently pulse the mic FAB. */
@@ -246,7 +253,12 @@ export function ComposeCard({
           console.warn('iOS recognizer restart failed:', err);
         }
       }
-      if (status === 'recording') setStatus('typing');
+      // When the user-initiated stop fired, stopVoice() owns the post-stop
+      // status (it transitions to 'cleaning' while punctuation runs). Don't
+      // overwrite it here.
+      if (!userStopped && status === 'recording') {
+        setStatus('typing');
+      }
     };
 
     // Override stopVoice's flag so onend doesn't auto-restart.
@@ -265,7 +277,38 @@ export function ComposeCard({
   function stopVoice() {
     recognitionRef.current?.stop();
     setInterim('');
-    setStatus(text ? 'typing' : 'idle');
+    // Punctuate the raw transcript through Claude Haiku before showing the
+    // final text. We capture a snapshot of `text` so the user's text isn't
+    // overwritten if they happen to type while the API is in flight.
+    void punctuateTranscript();
+  }
+
+  async function punctuateTranscript() {
+    const snapshot = text.trim();
+    if (!snapshot || snapshot.length < 10) {
+      setStatus(text ? 'typing' : 'idle');
+      return;
+    }
+    setStatus('cleaning');
+    try {
+      const res = await fetch('/api/punctuate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: snapshot }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { text?: string };
+        if (data.text && typeof data.text === 'string') {
+          // Only replace if the user hasn't typed in the meantime. If they
+          // have, their edits win — we don't clobber.
+          setText((current) => (current.trim() === snapshot ? data.text! : current));
+        }
+      }
+    } catch (err) {
+      console.warn('Punctuate failed:', err);
+    } finally {
+      setStatus((s) => (s === 'cleaning' ? (text ? 'typing' : 'idle') : s));
+    }
   }
 
   async function handleSubmit() {
@@ -286,6 +329,7 @@ export function ComposeCard({
   }
 
   const isRecording = status === 'recording';
+  const isCleaning = status === 'cleaning';
   const isSaving = status === 'saving';
   const isResult = status === 'result' && result;
 
@@ -327,7 +371,7 @@ export function ComposeCard({
               onInteraction?.();
             }}
             placeholder="what's on your mind?"
-            disabled={isSaving}
+            disabled={isSaving || isCleaning}
             rows={7}
             className="w-full resize-none bg-transparent text-[16px] leading-relaxed text-ink-primary placeholder:italic placeholder:text-ink-tertiary focus:outline-none disabled:opacity-50"
             style={{ fontFamily: 'var(--font-fraunces)' }}
@@ -348,6 +392,14 @@ export function ComposeCard({
                 style={{ fontFamily: 'var(--font-mono)' }}
               >
                 reading…
+              </div>
+            )}
+            {isCleaning && (
+              <div
+                className="text-[10px] uppercase tracking-widest text-ink-secondary"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                cleaning up…
               </div>
             )}
           </div>
