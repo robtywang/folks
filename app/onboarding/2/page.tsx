@@ -4,14 +4,16 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ProgressIndicator } from '@/components/progress-indicator';
+import { OnboardingDemo } from '@/components/onboarding-demo';
 
 export default function OnboardingStep2() {
   const router = useRouter();
   const [ctaVisible, setCtaVisible] = useState(false);
 
-  // CTA appears at 1800ms — after all 3 lines have faded in.
+  // CTA appears after the demo has had time to play one full loop (~5s in,
+  // enough for the user to see the core flow happen once before deciding).
   useEffect(() => {
-    const t = window.setTimeout(() => setCtaVisible(true), 1800);
+    const t = window.setTimeout(() => setCtaVisible(true), 5000);
     return () => window.clearTimeout(t);
   }, []);
 
@@ -29,41 +31,26 @@ export default function OnboardingStep2() {
         </Link>
       </header>
 
-      <div className="flex flex-1 flex-col items-center justify-center gap-10 text-center">
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
         <p
           className="onboarding-fade-in italic leading-snug text-ink-primary"
           style={{
             fontFamily: 'var(--font-fraunces)',
-            fontSize: '22px',
+            fontSize: '20px',
             animationDelay: '0ms',
           }}
         >
           write about your day.
-        </p>
-        <p
-          className="onboarding-fade-in max-w-[280px] italic leading-snug text-ink-primary"
-          style={{
-            fontFamily: 'var(--font-fraunces)',
-            fontSize: '22px',
-            animationDelay: '600ms',
-          }}
-        >
-          the people you mention
           <br />
-          become your circle.
+          your circle reveals itself.
         </p>
-        <p
-          className="onboarding-fade-in max-w-[280px] italic leading-snug text-ink-primary"
-          style={{
-            fontFamily: 'var(--font-fraunces)',
-            fontSize: '22px',
-            animationDelay: '1200ms',
-          }}
+
+        <div
+          className="onboarding-fade-in w-full"
+          style={{ animationDelay: '600ms' }}
         >
-          who's closest reveals
-          <br />
-          itself over time.
-        </p>
+          <OnboardingDemo />
+        </div>
       </div>
 
       <div className="flex flex-col items-center gap-6 pb-10">

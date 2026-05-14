@@ -183,3 +183,249 @@ body {
     overflow: hidden;
   }
 }
+
+/* ── Onboarding demo (9s loop showing compose → attribute → rank) ──────── */
+.folks-demo {
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+  font-family: var(--font-fraunces);
+}
+
+.folks-demo-card {
+  background: var(--bg-cream);
+  border: 0.5px solid var(--border-hair);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 1px 2px rgba(31, 26, 20, 0.04);
+}
+
+.folks-demo-compose {
+  margin-bottom: 10px;
+  min-height: 76px;
+}
+
+.folks-demo-typed {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-primary);
+  overflow: hidden;
+  white-space: nowrap;
+  width: 0;
+  animation: folks-demo-type 9s steps(36, end) infinite;
+}
+
+.folks-demo-typed-emphasis {
+  color: var(--ink-primary);
+}
+
+.folks-demo-caret {
+  display: inline-block;
+  width: 1px;
+  height: 13px;
+  margin-left: 1px;
+  background: var(--ink-primary);
+  vertical-align: text-bottom;
+  animation: folks-demo-blink 1s steps(2, end) infinite;
+}
+
+.folks-demo-hairline {
+  height: 1px;
+  background: var(--border-hair);
+  margin: 10px 0 8px;
+}
+
+.folks-demo-row-spread {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.folks-demo-save {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+  opacity: 0;
+  animation: folks-demo-save-fade 9s ease-in-out infinite;
+}
+
+.folks-demo-mic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--accent-coral);
+  color: var(--bg-cream);
+  font-size: 12px;
+}
+
+.folks-demo-chip {
+  margin: 8px auto 10px;
+  width: max-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(111, 125, 99, 0.12);
+  border: 0.5px solid var(--border-hair);
+  font-size: 11px;
+  color: var(--ink-secondary);
+  opacity: 0;
+  transform: translateY(-4px);
+  animation: folks-demo-chip-in 9s ease-out infinite;
+}
+
+.folks-demo-chip-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.folks-demo-chip-name {
+  font-style: italic;
+  color: var(--accent-coral);
+}
+
+.folks-demo-ratings {
+  position: relative;
+  height: 144px;
+  padding: 10px 14px 12px;
+}
+
+.folks-demo-ratings-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-secondary);
+  margin-bottom: 6px;
+}
+
+.folks-demo-rank {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  display: grid;
+  grid-template-columns: 24px 1fr auto auto;
+  align-items: center;
+  gap: 10px;
+  height: 28px;
+  font-size: 13px;
+}
+
+.folks-demo-rank-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-tertiary);
+  position: relative;
+}
+
+.folks-demo-rank-name {
+  color: var(--ink-primary);
+}
+
+.folks-demo-rank-score {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-secondary);
+  position: relative;
+}
+
+.folks-demo-rank-arrow {
+  font-size: 11px;
+  color: var(--accent-sage);
+  opacity: 0;
+  animation: folks-demo-arrow-flash 9s ease-in-out infinite;
+}
+
+.folks-demo-rank-1 {
+  top: 30px;
+}
+.folks-demo-rank-alex {
+  top: 62px;
+  animation: folks-demo-alex-shift 9s ease-in-out infinite;
+}
+.folks-demo-rank-maya {
+  top: 94px;
+  animation: folks-demo-maya-rise 9s ease-in-out infinite;
+}
+
+/* Before/after labels for swapping rank number + score */
+.folks-demo-rank-num-before,
+.folks-demo-score-before {
+  position: absolute;
+  inset: 0;
+  animation: folks-demo-before-fade 9s ease-in-out infinite;
+}
+.folks-demo-rank-num-after,
+.folks-demo-score-after {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  animation: folks-demo-after-fade 9s ease-in-out infinite;
+}
+
+/* ── Keyframes (9s loop) ──────────────────────────────────────────────── */
+
+/* Compose text types out over first 28% of the loop. */
+@keyframes folks-demo-type {
+  0% { width: 0; }
+  28%, 100% { width: 100%; }
+}
+
+@keyframes folks-demo-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Save button fades in after typing completes, fades out at the end. */
+@keyframes folks-demo-save-fade {
+  0%, 28% { opacity: 0; }
+  35%, 95% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Attribution chip slides down after save. */
+@keyframes folks-demo-chip-in {
+  0%, 38% { opacity: 0; transform: translateY(-4px); }
+  44%, 95% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-4px); }
+}
+
+/* Maya rises one row at the 55% mark. */
+@keyframes folks-demo-maya-rise {
+  0%, 55% { transform: translateY(0); }
+  65%, 100% { transform: translateY(-32px); }
+}
+
+/* Alex slides down to vacate row 2. */
+@keyframes folks-demo-alex-shift {
+  0%, 55% { transform: translateY(0); }
+  65%, 100% { transform: translateY(32px); }
+}
+
+/* Before label (03, 5.2) — visible early, fades out as Maya rises. */
+@keyframes folks-demo-before-fade {
+  0%, 55% { opacity: 1; }
+  65%, 100% { opacity: 0; }
+}
+
+/* After label (02, 6.4) — fades in as Maya rises. */
+@keyframes folks-demo-after-fade {
+  0%, 55% { opacity: 0; }
+  65%, 100% { opacity: 1; }
+}
+
+/* Sage up arrow flashes briefly when Maya rises. */
+@keyframes folks-demo-arrow-flash {
+  0%, 60% { opacity: 0; }
+  68% { opacity: 1; }
+  85% { opacity: 1; }
+  92%, 100% { opacity: 0; }
+}
