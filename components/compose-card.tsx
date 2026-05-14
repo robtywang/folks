@@ -90,6 +90,63 @@ export function ComposeCard({
     []
   );
 
+  // Highlight known person names in the compose text. Builds case-insensitive
+  // word-boundary segments so we can wrap matches in a faint coral chip while
+  // typing or speaking. Longest names first so "Maya R" beats "Maya".
+  function buildHighlightSegments(
+    raw: string
+  ): Array<{ text: string; matched?: { id: string; name: string; entryCount: number } }> {
+    if (!raw || allPeople.length === 0) return [{ text: raw }];
+    const sorted = [...allPeople].sort((a, b) => b.name.length - a.name.length);
+    const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pattern = new RegExp(
+      `\\b(${sorted.map((p) => escape(p.name)).join('|')})\\b`,
+      'gi'
+    );
+    const segments: Array<{
+      text: string;
+      matched?: { id: string; name: string; entryCount: number };
+    }> = [];
+    let lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = pattern.exec(raw)) !== null) {
+      if (m.index > lastIndex) {
+        segments.push({ text: raw.slice(lastIndex, m.index) });
+      }
+      const matched = m[0];
+      const person = sorted.find(
+        (p) => p.name.toLowerCase() === matched.toLowerCase()
+      );
+      segments.push({
+        text: matched,
+        matched: person
+          ? { id: person.id, name: person.name, entryCount: person.entryCount }
+          : undefined,
+      });
+      lastIndex = m.index + matched.length;
+    }
+    if (lastIndex < raw.length) segments.push({ text: raw.slice(lastIndex) });
+    return segments;
+  }
+
+  const composeSegments = buildHighlightSegments(text);
+  // Unique matches in current text → "fran (5)" footer chips below the box.
+  const composeMentions = (() => {
+    const seen = new Map<
+      string,
+      { name: string; entryCount: number }
+    >();
+    for (const s of composeSegments) {
+      if (s.matched && !seen.has(s.matched.id)) {
+        seen.set(s.matched.id, {
+          name: s.matched.name,
+          entryCount: s.matched.entryCount,
+        });
+      }
+    }
+    return Array.from(seen.values());
+  })();
+
   // Auto-resize textarea — taller floor so the box feels like a journal page.
   useEffect(() => {
     const el = textareaRef.current;
@@ -364,12 +421,21 @@ export function ComposeCard({
       >
         {isRecording ? (
           /* Live transcription view — replaces the textarea while recording so
-             the words appear in the same space they would once committed. */
+             the words appear in the same space they would once committed.
+             Known names get the same faint coral highlight as during typing. */
           <div
             className="min-h-[200px] whitespace-pre-wrap break-words text-[16px] leading-relaxed text-ink-primary"
             style={{ fontFamily: 'var(--font-fraunces)' }}
           >
-            {text}
+            {composeSegments.map((s, i) =>
+              s.matched ? (
+                <span key={i} className="folks-name-highlight">
+                  {s.text}
+                </span>
+              ) : (
+                <span key={i}>{s.text}</span>
+              )
+            )}
             {text && interim ? ' ' : ''}
             {interim && (
               <span className="italic text-ink-tertiary">{interim}</span>
@@ -380,21 +446,71 @@ export function ComposeCard({
             <span className="recording-caret" aria-hidden="true" />
           </div>
         ) : (
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              if (result) setResult(null);
-              if (status !== 'saving') setStatus('typing');
-              onInteraction?.();
-            }}
-            placeholder="what's on your mind?"
-            disabled={isSaving || isCleaning}
-            rows={7}
-            className="w-full resize-none bg-transparent text-[16px] leading-relaxed text-ink-primary placeholder:italic placeholder:text-ink-tertiary focus:outline-none disabled:opacity-50"
-            style={{ fontFamily: 'var(--font-fraunces)' }}
-          />
+          <div className="relative">
+            {/* Highlight overlay — sits behind the textarea, renders the same
+                text invisibly but with coral background chips around known
+                names. The textarea on top carries the caret and visible text. */}
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 whitespace-pre-wrap break-words text-[16px] leading-relaxed"
+              style={{
+                fontFamily: 'var(--font-fraunces)',
+                color: 'transparent',
+              }}
+            >
+              {composeSegments.map((s, i) =>
+                s.matched ? (
+                  <span key={i} className="folks-name-highlight">
+                    {s.text}
+                  </span>
+                ) : (
+                  <span key={i}>{s.text}</span>
+                )
+              )}
+              {/* Trailing space so the last line's highlight chip reserves room */}
+              {'​'}
+            </div>
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                if (result) setResult(null);
+                if (status !== 'saving') setStatus('typing');
+                onInteraction?.();
+              }}
+              placeholder="what's on your mind?"
+              disabled={isSaving || isCleaning}
+              rows={7}
+              className="relative w-full resize-none bg-transparent text-[16px] leading-relaxed text-ink-primary placeholder:italic placeholder:text-ink-tertiary focus:outline-none disabled:opacity-50"
+              style={{ fontFamily: 'var(--font-fraunces)' }}
+            />
+          </div>
+        )}
+
+        {/* Mention chips: when known names show up in the current text, surface
+            how many prior entries each name has so the user can see they're
+            building a thread. */}
+        {composeMentions.length > 0 && !isRecording && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {composeMentions.map((m) => (
+              <span
+                key={m.name}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px]"
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  background: 'rgba(200, 85, 61, 0.08)',
+                  color: 'var(--accent-coral)',
+                }}
+              >
+                {m.name.toLowerCase()}
+                <span className="text-ink-tertiary">·</span>
+                <span className="text-ink-tertiary">
+                  {m.entryCount} prev
+                </span>
+              </span>
+            ))}
+          </div>
         )}
 
         {/* Letterhead hairline separating the writing area from the action row */}

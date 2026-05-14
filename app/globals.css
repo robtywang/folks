@@ -29,6 +29,19 @@ body {
   color-scheme: light;
 }
 
+/* Faint coral chip applied to known person names in the compose textarea.
+   The overlay div renders these behind the textarea so the highlight reads
+   even though the caret + actual text live on the textarea layer above. */
+.folks-name-highlight {
+  background-color: rgba(200, 85, 61, 0.14);
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0 -2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  color: rgba(200, 85, 61, 0.92);
+}
+
 html {
   background-color: var(--bg-cream);
   /* Hard-lock the root surface to the dynamic viewport. Body never scrolls;
