@@ -67,7 +67,10 @@ export function baseClosenessFor(
   );
   const depthNorm = depthEntries.length / valid.length;
 
-  const composite = intensityNorm * 0.45 + freqNorm * 0.4 + depthNorm * 0.15;
+  // Frequency weighted higher than intensity — "people you write about a lot"
+  // is the most reliable closeness signal. Intensity still matters (deep
+  // sporadic relationships exist) but doesn't dominate.
+  const composite = intensityNorm * 0.3 + freqNorm * 0.55 + depthNorm * 0.15;
   return clamp(composite * 10, 0, 10);
 }
 
@@ -261,6 +264,31 @@ export function sentimentHistory(
     recentAvg !== null && priorAvg !== null ? recentAvg - priorAvg : null;
 
   return { buckets, lifetimeAvg, recentAvg, delta };
+}
+
+// ── Per-entry impact ─────────────────────────────────────────────────────────
+
+/**
+ * For each entry, what did adding it do to the displayed closeness score?
+ * Returns a map of entry.id → delta. Lets the profile show "this entry
+ * pushed closeness +0.4" badges next to each row, giving users an
+ * event-driven view of the otherwise snapshot-based algorithm.
+ */
+export function entryImpacts(entries: Entry[]): Map<string, number> {
+  const result = new Map<string, number>();
+  if (entries.length === 0) return result;
+  const sorted = [...entries].sort((a, b) => a.createdAt - b.createdAt);
+  let prevScore = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const upTo = sorted.slice(0, i + 1);
+    // Use the entry's own createdAt as "now" so recency decay is computed
+    // against the moment that entry was logged — not today, which would
+    // unfairly punish old entries.
+    const score = closenessFor(upTo, sorted[i].createdAt).display;
+    result.set(sorted[i].id, score - prevScore);
+    prevScore = score;
+  }
+  return result;
 }
 
 // ── Person record persistence ────────────────────────────────────────────────

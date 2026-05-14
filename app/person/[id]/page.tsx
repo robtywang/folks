@@ -9,6 +9,7 @@ import {
   cadenceFor,
   closenessHistory,
   closenessState,
+  entryImpacts,
   sentimentHistory,
   trajectoryFor,
   trendReason,
@@ -249,6 +250,7 @@ export default function PersonProfile({
   const history = closenessHistory(list, 9, 7); // ~60-day weekly sample
   const sentimentTrend = sentimentHistory(list, 12); // 12-week sentiment chart
   const cadence = cadenceFor(list);
+  const impacts = entryImpacts(list); // entry.id → closeness delta from that entry
   const rank = ranked.findIndex((p) => p.id === id) + 1; // 1-indexed; 0 if not found
 
   return (
@@ -635,7 +637,13 @@ export default function PersonProfile({
             no entries yet
           </div>
         ) : (
-          list.map((entry) => <EntryRow key={entry.id} entry={entry} />)
+          list.map((entry) => (
+            <EntryRow
+              key={entry.id}
+              entry={entry}
+              impact={impacts.get(entry.id) ?? 0}
+            />
+          ))
         )}
       </div>
 
@@ -959,17 +967,39 @@ function TrajectoryCard({
   );
 }
 
-function EntryRow({ entry }: { entry: Entry }) {
+function EntryRow({ entry, impact }: { entry: Entry; impact: number }) {
+  const impactRounded = Math.round(impact * 10) / 10;
+  const showImpact = Math.abs(impactRounded) >= 0.1;
+  const impactColor =
+    impactRounded > 0
+      ? 'var(--accent-sage)'
+      : impactRounded < 0
+        ? 'var(--accent-coral)'
+        : 'var(--ink-tertiary)';
+  const impactGlyph = impactRounded > 0 ? '+' : impactRounded < 0 ? '−' : '·';
+
   return (
     <div
       className="py-3"
       style={{ borderBottom: '0.5px solid var(--border-hair)' }}
     >
-      <div
-        className="text-[10px] uppercase tracking-widest text-ink-tertiary"
-        style={{ fontFamily: 'var(--font-mono)' }}
-      >
-        {entryTime(entry.createdAt)}
+      <div className="flex items-baseline justify-between gap-3">
+        <div
+          className="text-[10px] uppercase tracking-widest text-ink-tertiary"
+          style={{ fontFamily: 'var(--font-mono)' }}
+        >
+          {entryTime(entry.createdAt)}
+        </div>
+        {showImpact && (
+          <span
+            className="text-[10px] tabular-nums"
+            style={{ fontFamily: 'var(--font-mono)', color: impactColor }}
+            title="how this entry moved closeness"
+          >
+            {impactGlyph}
+            {Math.abs(impactRounded).toFixed(1)}
+          </span>
+        )}
       </div>
       <p
         className="mt-1 text-[14px] italic leading-snug text-ink-primary"
