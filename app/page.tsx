@@ -7,7 +7,7 @@ import { ComposeCard } from '@/components/compose-card';
 import { LockedRecent } from '@/components/locked-recent';
 import { pruneAllOrphans } from '@/lib/save-entry';
 import { recomputeAll } from '@/lib/closeness';
-import { useLockState } from '@/lib/lock';
+import { useLockState, hasLockPin } from '@/lib/lock';
 import { getMeta, setMeta } from '@/lib/db';
 import type { SaveResult } from '@/lib/save-entry';
 
@@ -42,10 +42,12 @@ export default function Home() {
     fading: boolean;
   } | null>(null);
 
-  // Boot: check onboarding state (Dexie + legacy localStorage), run housekeeping.
+  // Boot: gate onboarding by passcode presence. If the user has a passcode set,
+  // they're a returning user and skip onboarding. The legacy completed-flag
+  // migration is still applied so existing users with no passcode but who
+  // already finished onboarding aren't re-prompted.
   useEffect(() => {
     (async () => {
-      // Migrate legacy localStorage flag → Dexie one-time.
       let completed = await getMeta<boolean>('hasCompletedOnboarding');
       if (!completed) {
         try {
@@ -61,7 +63,10 @@ export default function Home() {
         typeof window !== 'undefined' &&
         sessionStorage.getItem(STEP4_SESSION_KEY) === 'true';
 
-      if (!completed && !inStep4) {
+      const hasPin = hasLockPin();
+      // Onboarding only fires for true first-timers: no passcode set AND
+      // no prior completion marker AND not already in the post-onboarding flow.
+      if (!hasPin && !completed && !inStep4) {
         router.replace('/onboarding/1');
         return;
       }
