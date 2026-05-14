@@ -29,6 +29,22 @@ body {
   color-scheme: light;
 }
 
+/* Adaptive search input — dashed border while empty (reads as "waiting"),
+   solidifies when the user types or focuses. The data-state attribute is
+   toggled in React based on whether the input has content. */
+.folks-search-input {
+  border: 1px dashed var(--border-hair);
+  transition: border-color 0.15s ease;
+}
+.folks-search-input:hover {
+  border-color: var(--ink-tertiary);
+}
+.folks-search-input:focus,
+.folks-search-input[data-state='filled'] {
+  border-style: solid;
+  border-color: var(--ink-tertiary);
+}
+
 /* Native range styled to match the journal aesthetic. Thin track, coral
    thumb. Used by the feedback check-in slider. */
 .folks-feedback-range {

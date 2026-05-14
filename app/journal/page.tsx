@@ -183,7 +183,8 @@ function JournalContent() {
         <span aria-hidden="true" style={{ width: 18 }} />
       </header>
 
-      {/* Search bar */}
+      {/* Search box — dashed when empty (a "waiting for you" slot), solidifies
+          once you've started typing. Adaptive instead of static chrome. */}
       {entries.length > 0 && (
         <div className="relative mt-6">
           <i
@@ -194,12 +195,10 @@ function JournalContent() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="search entries…"
-            className="w-full rounded-full bg-white/40 py-2 pl-9 pr-9 text-[13px] italic text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
-            style={{
-              fontFamily: 'var(--font-fraunces)',
-              border: '0.5px solid var(--border-hair)',
-            }}
+            placeholder="search entries"
+            className="folks-search-input w-full rounded-md bg-transparent py-2 pl-9 pr-9 text-[13px] italic text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
+            style={{ fontFamily: 'var(--font-fraunces)' }}
+            data-state={query ? 'filled' : 'empty'}
           />
           {query && (
             <button
