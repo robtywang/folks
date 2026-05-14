@@ -183,12 +183,15 @@ function JournalContent() {
         <span aria-hidden="true" style={{ width: 18 }} />
       </header>
 
-      {/* Search box — dashed when empty (a "waiting for you" slot), solidifies
-          once you've started typing. Adaptive instead of static chrome. */}
+      {/* Search line — just a single bottom hairline with the icon + input
+          on top. No box at all. */}
       {entries.length > 0 && (
-        <div className="relative mt-6">
+        <div
+          className="relative mt-6 flex items-center"
+          style={{ borderBottom: '0.5px solid var(--border-hair)' }}
+        >
           <i
-            className="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-tertiary"
+            className="ti ti-search pointer-events-none flex-shrink-0 text-ink-tertiary"
             style={{ fontSize: 13 }}
             aria-hidden="true"
           />
@@ -196,15 +199,14 @@ function JournalContent() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="search entries"
-            className="folks-search-input w-full rounded-md bg-transparent py-2 pl-9 pr-9 text-[13px] italic text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
+            className="ml-2 flex-1 bg-transparent py-2 text-[13px] italic text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
             style={{ fontFamily: 'var(--font-fraunces)' }}
-            data-state={query ? 'filled' : 'empty'}
           />
           {query && (
             <button
               onClick={() => setQuery('')}
               aria-label="Clear search"
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-tertiary transition-colors hover:text-ink-primary"
+              className="ml-2 flex-shrink-0 text-ink-tertiary transition-colors hover:text-ink-primary"
             >
               <i className="ti ti-x" style={{ fontSize: 13 }} />
             </button>
