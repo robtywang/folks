@@ -307,7 +307,7 @@ These have been explicitly rejected or are anti-patterns for this product:
 2. **Time-spent capture.** Currently not modeled. Could be inferred from text ("long talk" vs "quick wave") via parse — not yet implemented.
 3. **AI agent intent detection.** Proposed: parse step detects when an entry is actually an instruction ("merge the two maya's", "actually mark is my brother"). Not yet built. Owner sees the appeal but doesn't want to lose the journaling identity.
 4. **Ratings page redesign.** Proposed: keep ranked list + use first sentence of each person's existing Reading as the row body (turns the page from leaderboard → editorial almanac). Owner approved direction, not yet built.
-5. **Journal-feel refactor.** Owner has flagged that `/journal` "feels like a feed." Proposed cleanups: larger date headers, drop quotation marks, soften row chrome, group same-day same-person entries as a session. Not yet built.
+5. ~~**Journal-feel refactor.**~~ **DONE.** `/journal` now reads entry-first: per-entry name header dropped; entry text is the primary line (italic Fraunces ~17px, no quote marks); known person names highlighted inline in coral and tappable to `/person/[id]`; consecutive same-personId entries within a day grouped into one session block (separated by hairlines); date headers bumped to ~30px italic Fraunces; edit/delete icons at 40% opacity next to the timestamp. Pull-to-reveal search bar still works.
 6. **TestFlight wrap.** Owner has Apple Developer account ready. Path: Vercel (done) → Capacitor wrap pointing at Vercel URL → Xcode archive → upload → TestFlight. Not started.
 7. **App name.** "folks" is current. Owner has said this is working but not necessarily final.
 
