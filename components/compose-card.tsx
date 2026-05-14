@@ -410,7 +410,12 @@ export function ComposeCard({
       const res = await fetch('/api/punctuate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: snapshot }),
+        body: JSON.stringify({
+          text: snapshot,
+          // Pass the user's existing people so the model can correct misheard
+          // names against the actual list ("ran" → "Fran"), not just guess.
+          knownNames: allPeople.map((p) => p.name),
+        }),
       });
       if (res.ok) {
         const data = (await res.json()) as { text?: string };

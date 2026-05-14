@@ -5,18 +5,29 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 interface PunctuateRequest {
   text: string;
+  /** Names already in the user's circle. Lets the model correct obvious
+   *  speech-recognition mistakes ("ran" → "Fran") instead of preserving them. */
+  knownNames?: string[];
 }
 
-const SYSTEM_PROMPT = `You clean up voice transcripts. The input is raw words from speech recognition with no punctuation or capitalization. Your job: return the exact same words with appropriate punctuation, capitalization, and sentence breaks.
+function buildSystem(knownNames: string[]): string {
+  const namesList =
+    knownNames.length > 0
+      ? `\n\nKNOWN PEOPLE IN THE USER'S CIRCLE (correct misheard transcriptions against this list when it's clearly the same name — e.g. "ran" → "Fran", "may" → "Maya", "saraah" → "Sarah"):\n${knownNames.map((n) => `- ${n}`).join('\n')}\n`
+      : '';
+
+  return `You clean up voice transcripts. The input is raw words from speech recognition with no punctuation or capitalization. Your job: return the same content with appropriate punctuation, capitalization, sentence breaks, and obvious-error corrections.
 
 RULES:
-- Preserve every word. Do not add, remove, or rephrase words.
+- Add punctuation: commas, periods, question marks where natural.
 - Capitalize the first letter of each sentence.
 - Capitalize proper nouns (people's names, places, brand names).
-- Add commas, periods, and question marks where natural.
-- Keep contractions (don't → don't, I'm → I'm).
-- Keep the user's lowercase aesthetic for casual words.
-- Return ONLY the punctuated text — no preamble, no explanation, no quotes around it.`;
+- Keep contractions intact.
+- Preserve the user's casual register — don't formalize.
+- If a known person's name is clearly mis-transcribed (the list below), correct it.
+- DO NOT add new words, paraphrase, or change the user's meaning. Corrections are limited to: (a) punctuation, (b) capitalization, (c) name correction against the known list.
+- Return ONLY the cleaned text — no preamble, no explanation, no quotes around it.${namesList}`;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -34,10 +45,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ text: raw });
     }
 
+    const knownNames = Array.isArray(body.knownNames) ? body.knownNames : [];
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 600,
-      system: SYSTEM_PROMPT,
+      system: buildSystem(knownNames),
       messages: [{ role: 'user', content: raw }],
     });
 
