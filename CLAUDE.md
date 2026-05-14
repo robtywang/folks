@@ -1,414 +1,398 @@
-# Circle — friends tracker app
+# folks — Claude Code Handoff
 
-A voice-first friends tracker that uses AI to surface who your real best friends are based on what you log about your interactions. Positioned as a **friends tracker, not a journal app**. The journal-style input is the mechanism, the ranking is the product.
-
-Pitch: *"Find out who your real best friends are."*
+A voice-first AI journal that maps who you're closest to based on what you log. This file is the canonical context for any Claude conversation working on the project. Copy-paste this file (or reference it via `@CLAUDE.md`) when starting a new chat.
 
 ---
 
-## Product thesis
+## Product
 
-User opens the app → lands on a compose surface → types or talks about whatever just happened → AI extracts who it's about, sentiment, and tags → a ranked list of friends emerges below, sorted by closeness. Over time the rankings reveal who they're actually investing in vs. who they think they are.
+**Name:** folks (formerly "Circle")
+**Tagline:** "an ai journal for exploring who you're really close to."
+**Live URL:** `https://folks-five.vercel.app`
+**Repo:** `https://github.com/robtywang/folks` (private)
+**Status:** Live PWA, daily-dogfooding stage. Not yet TestFlight / App Store.
 
-**Target user**: 22–32 year olds who use Letterboxd, Co-Star, BeReal, Day One. Introspective about social patterns. Want data, not therapy.
+### Positioning
 
-**Anti-personas**: people wanting actual deep journaling (use Day One), people wanting therapy-style commentary (use Reflectly), people building a CRM for networking (use Dex).
+Not a generic journal app. Not a CRM. The journal is the **mechanism**; the ranking is the **product**. You open the app at night, write about something that happened, the AI reads it, your friends list re-orders. Over time it reveals patterns you didn't notice.
 
----
+Target audience: 22–32, introspective, uses Letterboxd / Co-Star / Day One. Wants data, not therapy. The kind of person who opens an app at 9pm to think, not to do.
 
-## Core flows
+**Anti-personas:** people wanting deep journaling (use Day One), therapy-style commentary (use Reflectly), networking CRM (use Dex).
 
-1. **Logging**: user taps mic or types → AI parses entry → attribution chip appears → save
-2. **Ranking**: closeness algorithm recomputes on every save → friends list re-orders → trend indicators update
-3. **Editing**: any AI-inferred field is tappable → user can correct → AI re-runs if text changes
+### The product moat is NOT the AI
 
----
+Claude is commoditized — anyone can wrap it. folks defensibility comes from:
+1. **Framing** — "find out who your real best friends are" lands emotionally on the target demographic
+2. **Aesthetic** — cream, italic serif, Tabler outline icons, restrained
+3. **Taste in what NOT to build** — no social, no notifications-spam, no chat
+4. **Privacy positioning** — local-first storage IS a feature, repeatedly committed to
 
-## Screens
-
-### 1. Home (compose-first, scrollable)
-- Top bar: wordmark left, book icon + gear icon right
-- Date display (italic serif, prominent)
-- **Compose surface** at top — large card styled as paper, italic placeholder, mic icon inside the card. Tap → full-screen compose
-- Section break: hairline + "your circle" label
-- **Ranked friends list** below: each row = serif name + mono score + ▲/▼ trend. Tap row → expands inline
-- Scroll further: recent entries section (chronological feed of last 3–5 entries)
-
-### 2. Compose state (full-screen, triggered by tapping compose card or mic)
-- Live voice transcript renders as user speaks
-- REC indicator + stop button if recording
-- AI attribution chip slides in mid-compose ("Logging to Maya · change")
-- Save button bottom-right, Cancel × top-left
-
-### 3. Journal sheet (book icon → bottom sheet, full-height capable)
-- Chronological feed of all entries
-- Filter pills: All / by Person / Solo
-- Search affordance
-- Tap entry → entry detail
-- Swipe down to dismiss
-
-### 4. Person profile (drill in from any friend row)
-- **Header**: profile picture (uploadable, falls back to color-hashed monogram), serif name, italic relationship label, pin + mute icons
-- **Stats row**: total entries, avg sentiment, closeness score (large), trend, last seen
-- **The Reading card**: 1–3 sentence italic serif AI summary, rerun button
-- **Entry timeline**: each entry broken down with date, full text, sentiment chip, tag chips
-- **Actions menu**: merge, mute, delete
-- "Log new for [name]" CTA
-
-### 5. Entry detail (tap any entry)
-- Date + exact time
-- Full text or transcript
-- Audio playback if voice
-- Editable: text, attribution chip, sentiment slider, tag chips
-- Delete with 5-second undo
-
-### 6. Settings (gear icon)
-- Account, privacy, AI behavior thresholds, voice language, data export, data delete
-
-### 7. Onboarding (first run only)
-- 2 intro screens, skippable
-- Mic + notification permissions
-- First-entry prompt seeds the empty state
-
----
-
-## Aesthetic: "stripped quiet" with journal flavor
-
-Reference apps: Day One (spareness), Letterboxd (tracker structure), Co-Star (literary brevity moments).
-
-### Palette
-```css
---bg-cream:        #FAF7F0;  /* warm cream, not white */
---ink-primary:     #1F1A14;  /* warm black */
---ink-secondary:   #8C7E5C;  /* mid tan */
---ink-tertiary:    #B4A689;  /* light tan */
---border-hair:     #D9CFBC;  /* hairline borders */
---accent-coral:    #C8553D;  /* primary action, negative deltas */
---accent-sage:     #6F7D63;  /* positive trends */
-```
-
-### Typography
-- **Display & body**: Fraunces (serif). Weights 400 and 500 only. Italic for prompts and special moments.
-- **Numbers & metadata**: JetBrains Mono. Weights 400 and 500 only.
-- Load via Google Fonts:
-```html
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..600;1,9..144,300..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-```
-
-### Layout
-- 16px horizontal padding throughout
-- 8–16px vertical rhythm
-- Hairline borders (0.5px solid var(--border-hair)) for the few dividers needed
-- **No double rules, no dashed dividers, no chip badges, no sparklines in v1**
-- Single coral accent point per screen (the mic action)
-
-### Iconography
-- **Tabler outline icons only**, never filled variants
-- 14–18px in nav, 16–18px in primary actions, 22px in FAB
-- Webfont via: `https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css`
-
-### What this aesthetic explicitly is NOT
-- Not a masthead-driven publication aesthetic
-- Not dark mode (defer to v2)
-- Not heavy on chip badges or sparklines (defer to v2 once we know what users want surfaced)
-- Not cute, twee, or cottagecore
-- Not aggressively designed
-
----
-
-## AI pipeline
-
-### Per-entry parsing (Claude Sonnet 4.6)
-
-Single API call per entry. ~500 tokens in, 200 out. Cost: ~$0.005/entry.
-
-**Prompt template:**
-```
-You parse entries for a friends-tracker app.
-
-EXISTING PEOPLE IN USER'S CIRCLE:
-{list of {name, relationship, entry_count, avg_sentiment}}
-
-USER'S ENTRY:
-"{entry text}"
-
-Return JSON only:
-{
-  "primary_person": "<existing name>" | "<new name>" | null,
-  "is_new_person": boolean,
-  "confidence": 0.0-1.0,
-  "is_solo": boolean,
-  "sentiment": 1-10,
-  "tags": [from fixed vocabulary, max 3],
-  "additional_people": [string],
-  "context_summary": "short phrase"
-}
-
-Tag vocabulary (paired): energizing/draining, vulnerable/guarded,
-present/distant, warm/cold, supportive/exhausting, fun/boring,
-calm/anxious, honest/performative, generous/transactional, easy/effortful.
-
-Return empty tags array if unsure. Return null primary_person and is_solo: true 
-if the entry is about the user alone (no specific person involved).
-```
-
-**Confidence thresholds:**
-- `> 0.85`: auto-attribute, show "Logging to X · change"
-- `0.5 – 0.85`: soft prompt "Maybe X? Confirm or pick"
-- `< 0.5`: explicit picker before save
-
-**Person emergence:**
-- New name + confidence > 0.7 → store as transient (in entries DB but not in people DB)
-- Second distinct mention of same name → promote to real person, toast "Added X to your circle · undo"
-
-### Personality summary / "The Reading" (Claude Opus 4.7)
-
-Runs on the person profile. Aggregates all entries about a person, generates 1–3 sentence personality summary in italic serif voice.
-
-- Generates when person has 5+ entries
-- Auto-regenerates every 10 new entries about them
-- User can manually rerun via "Rerun ↻" button
-- Cost: ~$0.05 per generation (rare enough)
-- ~3000 tokens in (entries), 500 tokens out
-
-**Tone guidance baked into prompt**: observational, never advisory. "Maya tends to be present in slow moments, quieter when stressed." Never "you should reach out to Maya more."
-
----
-
-## Closeness algorithm (local, no API)
-
-Runs on every save. Pure local compute.
-
-```typescript
-function closeness(person: Person, entries: Entry[]): number {
-  const recent = entries
-    .filter(e => e.personId === person.id)
-    .filter(e => daysSince(e.createdAt) <= 90)
-  
-  if (recent.length === 0) return 0
-  
-  // 1. Recency-weighted sentiment (30-day half-life)
-  const weights = recent.map(e => Math.exp(-daysSince(e.createdAt) / 30))
-  const totalWeight = weights.reduce((a, b) => a + b, 0)
-  const weightedSentiment = recent.reduce(
-    (sum, e, i) => sum + e.sentiment * weights[i], 0
-  ) / totalWeight
-  
-  // 2. Frequency factor (caps at 10 entries)
-  const freqFactor = Math.min(recent.length / 10, 1.0)
-  
-  // 3. Variety factor (distinct tag combinations / 5, capped at 1)
-  const tagCombos = new Set(recent.map(e => e.tags.sort().join(',')))
-  const variety = Math.min(tagCombos.size / 5, 1.0)
-  
-  // 4. Composite
-  return clamp(
-    weightedSentiment * 0.6 +
-    freqFactor * 3 +
-    variety * 1,
-    0, 10
-  )
-}
-
-function trend(person: Person, entries: Entry[]): number {
-  return closeness(person, entries) - closenessAt(person, entries, daysAgo(7))
-}
-```
-
-Tunable parameters (post-launch A/B):
-- Recency decay (30-day half-life default)
-- Frequency cap (10 entries)
-- Sentiment-vs-frequency weight (0.6 vs 3.0)
-
----
-
-## Data model
-
-```typescript
-interface Entry {
-  id: string                  // UUID
-  createdAt: number           // unix ms
-  updatedAt: number
-  text: string                // user-written or transcribed
-  audioBlob?: Blob            // local-only, never uploaded by default
-  personId: string | null     // null = solo entry
-  sentiment: number           // 1-10, from AI
-  tags: string[]              // max 3, from fixed vocabulary
-  aiConfidence: number        // 0-1
-  userConfirmed: boolean      // controls sparkle indicator
-  additionalPeople?: string[] // secondary people mentioned
-}
-
-interface Person {
-  id: string
-  createdAt: number
-  name: string
-  nickname?: string
-  relationship?: string       // "close friend", "ex", "coworker", etc.
-  profilePicture?: string     // base64 or blob URL, local
-  closenessScore: number      // computed, cached, recomputed on save
-  closenessTrend: number      // delta vs 7 days ago
-  lastInteraction: number     // timestamp
-  entryCount: number          // cached
-  avgSentiment: number        // cached
-  muted: boolean
-  pinned: boolean
-  readingText?: string        // AI personality summary
-  readingUpdatedAt?: number
-  isTransient: boolean        // true if only 1 mention so far
-}
-
-interface User {
-  id: string
-  createdAt: number
-  voiceLanguage: string       // default "en-US"
-  attributionThreshold: number // default 0.75
-  notificationPrefs: {
-    weeklyRecap: boolean
-    dailyPrompt: boolean
-  }
-}
-```
+Don't pitch this as "the AI app for friendship." Pitch it as a journal with a calm aesthetic that quietly maps your circle.
 
 ---
 
 ## Tech stack (committed)
 
-- **Framework**: Next.js 15 (App Router) — PWA-first
-- **Styling**: Tailwind CSS + CSS variables for the palette
-- **Local storage**: IndexedDB via Dexie.js (clean API for the data model above)
-- **AI**: Anthropic SDK (`@anthropic-ai/sdk`)
-- **Voice**: Web Speech API (browser-native, client-side)
-- **Icons**: Tabler Icons webfont
-- **Fonts**: Fraunces + JetBrains Mono via Google Fonts
-- **Deployment**: Vercel (free tier sufficient for v1)
-- **Auth**: skip for v1, everything local. Add Supabase Auth in v2 when sync becomes a need.
-- **Cloud sync**: NOT in v1. v2 will use Supabase with client-side encryption.
+```
+Framework:    Next.js 15.5.18 (App Router)
+UI:           React 19 + TypeScript strict mode
+Storage:      Dexie.js (IndexedDB) — all data local to device
+AI:           @anthropic-ai/sdk
+              · Claude Sonnet 4.6 for parse + insights
+              · Claude Opus 4.7 for readings
+              · Claude Haiku 4.5 for voice punctuation
+Voice:        Web Speech API (browser-native)
+Styling:      Tailwind CSS + CSS variables
+Fonts:        Fraunces (serif), JetBrains Mono — Google Fonts
+Icons:        Tabler webfont, OUTLINE variants only
+Deploy:       Vercel (auto-deploy on git push to main)
+PWA:          manifest.webmanifest + apple-touch-icon set; installable via Add to Home Screen
+Auth:         None in v1. Everything anonymous, device-local.
+```
+
+### Required env vars
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Set in `.env.local` locally; set in Vercel Project Settings → Environment Variables for production. Without it, all API routes return `{"error":"no_api_key"}` and AI features degrade to mock parser (intentionally dumb).
+
+### Build/dev commands
+
+```
+npm run dev       # localhost:3000
+npm run build     # production build
+npm run typecheck # tsc --noEmit
+npm run lint      # next lint
+```
+
+`.npmrc` has `legacy-peer-deps=true` because React 19 + some libraries are peer-mismatched. `vercel.json` enforces the same install command server-side.
 
 ---
 
-## Privacy commitments (these are user-facing promises)
+## Aesthetic — non-negotiable
 
-- **Voice transcription is on-device**. Web Speech API runs in the browser, audio never leaves the device by default.
-- **Default to local-only storage**. IndexedDB on the user's device. Cloud sync is explicit opt-in (v2).
-- **Only transcript text gets sent to Anthropic** for AI parsing. Audio blobs stay local.
-- **No social features in v1**. No sharing, no friend-of-friend, no public profiles, no exports of other people's names.
-- **Data export**: one-tap JSON dump from settings.
-- **Data delete**: irreversible delete on demand, two confirmations.
+Reference apps: Day One (spareness), Letterboxd (tracker structure), Co-Star (literary brevity).
 
----
+### Palette (CSS vars in `app/globals.css`)
 
-## v1 scope (build) vs v2+ (cut)
+```
+--bg-cream:        #FAF7F0   /* warm cream, not white */
+--ink-primary:     #1F1A14   /* warm black */
+--ink-secondary:   #8C7E5C   /* mid tan */
+--ink-tertiary:    #B4A689   /* light tan */
+--border-hair:     #D9CFBC   /* hairline borders */
+--accent-coral:    #C8553D   /* primary actions, negative deltas */
+--accent-sage:     #6F7D63   /* positive trends */
+```
 
-### Build (v1)
-- Compose-first scrollable home with friends ranking below
-- Voice + text logging
-- AI parsing pipeline (Sonnet 4.6)
-- Closeness algorithm
-- Person profiles with profile picture upload, stats, Reading card, entry timeline
-- Entry detail + edit
-- Journal sheet (bottom sheet from book icon)
-- Settings
-- Onboarding (2 screens + first-entry prompt)
-- PWA install prompts
+### Typography
 
-### Cut from v1 (deliver in v2+)
-- Dedicated Insights tab → instead, weekly recap delivered as push notification + single card on home Sundays
-- Wrapped-style year-end recap
-- Cloud sync (local-only in v1)
-- Native iOS — ship PWA first
-- Place/activity tagging
-- Photo attachments to entries
-- Multi-language beyond English
-- Social/sharing features
-- Auth (everything anonymous + local in v1)
+- **Fraunces** (`var(--font-fraunces)`) — serif. Weights 400 + 500. Italic for prompts, names, special moments. Default body font.
+- **JetBrains Mono** (`var(--font-mono)`) — for numbers, metadata, uppercase labels like "ALL ENTRIES", "TRAJECTORY".
+- 16px horizontal padding throughout. 8–16px vertical rhythm.
 
----
+### Iconography
 
-## Coding conventions
+- **Tabler outline only.** Never filled. Never emoji.
+- 13–14px in metadata rows. 16–22px in primary actions. 22–28px in the (rare) hero mic state.
 
-- **TypeScript strict mode**. No `any` without explicit comment justifying it.
-- **Functional components only**. No class components.
-- **File naming**: kebab-case for files, PascalCase for components.
-- **Folder structure**:
-  ```
-  /app                  # Next.js app router pages
-  /components           # React components
-  /lib
-    /ai                 # Claude API integration
-    /db                 # Dexie schemas + queries
-    /closeness          # algorithm
-  /styles
-  ```
-- **State management**: React state + Dexie reactive queries via `useLiveQuery`. Don't reach for Redux/Zustand unless we hit a real wall.
-- **Animations**: CSS only where possible. Framer Motion if needed for the bottom sheet.
-- **No external UI libraries** (no shadcn, no MUI). Hand-build to maintain aesthetic control.
-- **Accessibility**: ARIA labels on all icon-only buttons. Semantic HTML. Color contrast ≥ 4.5:1 for body text.
+### What the aesthetic IS NOT
+
+- Not a publication / masthead aesthetic
+- Not dark mode (defer to v2)
+- Not heavy chrome (no big shadows, no gradients, no glassmorphism)
+- Not cute / twee / cottagecore
+- Not aggressively designed — restraint is the point
+
+### Restraint rule
+
+Single coral accent point per screen (usually the mic). When in doubt, **remove chrome, don't add it.** If a design choice tips toward "designed app," step back.
 
 ---
 
-## Important rules for the agent
+## App architecture
 
-- **DO NOT** add features outside v1 scope without flagging it explicitly
-- **DO NOT** introduce competing aesthetic patterns. If unsure, default to *less* chrome, not more.
-- **DO NOT** use generic AI-coded styling (purple gradients, Inter font, glassmorphism, default shadcn). The aesthetic is specific.
-- **DO NOT** use emoji in UI. Tabler outline icons only.
-- **DO NOT** add dark mode in v1.
-- **DO NOT** ship to native iOS in v1. PWA only.
-- **DO** ask before changing the closeness algorithm parameters
-- **DO** preserve the privacy commitments (local-first, on-device transcription)
-- **DO** use the exact palette and typography defined above
-- **DO** keep total bundle size small — this is a daily-use app, must load fast
+### Pages
+
+| Route | Purpose | Scroll? |
+|-------|---------|---------|
+| `/` | Home, compose-first. Date display, compose textarea, recent entries preview. | Scrollable |
+| `/journal` | Reverse-chronological feed of all entries, grouped by day. Adaptive-border search bar. | Scrollable |
+| `/ratings` | "your folks" — ranked + forming sections. (Don't call it "leaderboard" in UI.) | Scrollable |
+| `/person/[id]` | Identity → inferences → who is X → reading → analytics → trajectory → entries → merge/remove. | Locked outer, internal scroll on content |
+| `/settings` | You, security, help, data, developer, about. | Scrollable |
+| `/onboarding/1..4` | 4-screen flow, gated by absence of passcode. | Locked |
+| `/test` | Dev-only parser sandbox. | Scrollable |
+
+### Scroll architecture
+
+Body is globally locked: `html, body { overflow: hidden; height: 100dvh }` in `globals.css`. `.phone-frame` is `height: 100svh; overflow: hidden`. **Pages that need to scroll** (journal, ratings, settings, home) wrap their main in `h-[100svh] overflow-y-auto`. **Pages that are locked** use `h-[100svh] overflow-hidden` (or for profile, `flex flex-col` with an inner scroll region for content beneath the topbar).
+
+### API routes (all in `app/api/*/route.ts`)
+
+| Route | Purpose | Model |
+|-------|---------|-------|
+| `/api/parse` | Parse a raw entry → primary_person, sentiment, tags, confidence | Sonnet 4.6 |
+| `/api/reading` | Generate a person's 1-3 sentence personality summary | Opus 4.7 |
+| `/api/insights` | 2-3 short observational patterns about a person. **Pre-filtered statistically.** Local code finds patterns, Claude only phrases them. | Sonnet 4.6 |
+| `/api/punctuate` | Clean voice transcript with punctuation + capitalization | Haiku 4.5 |
+| `/api/status` | Returns `{aiReady: boolean}` — whether the server has `ANTHROPIC_API_KEY` loaded |  — |
+
+### Data model (`types/index.ts`)
+
+```ts
+Entry {
+  id, createdAt, updatedAt, text,
+  personId | null,
+  sentiment (1-10, AI-set, user-correctable),
+  tags (max 3, fixed vocabulary),
+  aiConfidence,
+  userConfirmed,
+  additionalPeople,
+  aiPredictedPersonName,   // snapshot — drives parse correction memory
+  aiPredictedSentiment,    // snapshot — drives sentiment correction memory
+}
+
+Person {
+  id, name, nickname, relationship, profilePicture,
+  closenessScore, closenessTrend, lastInteraction,
+  entryCount, avgSentiment, muted, pinned,
+  readingText, readingInferences, readingUpdatedAt,
+  userContext,
+  insightCards, insightsUpdatedAt,
+  isTransient,
+}
+
+Meta (Dexie kv store) {
+  hasCompletedOnboarding,
+  hasSeenPasscodeWarning,
+}
+```
+
+**Tag vocabulary** (`TAG_VOCABULARY` in `types/index.ts`) — fixed 20 tags as paired dimensions: energizing/draining, vulnerable/guarded, present/distant, warm/cold, supportive/exhausting, fun/boring, calm/anxious, honest/performative, generous/transactional, easy/effortful. Claude only returns tags from this list.
 
 ---
 
-## Build commands (placeholder until project is initialized)
+## Closeness algorithm (`lib/closeness.ts`)
 
-```bash
-# Setup (run once)
-npx create-next-app@latest circle --typescript --tailwind --app
-cd circle
-npm install dexie dexie-react-hooks @anthropic-ai/sdk
+```
+base (0–10) = 0.30 × intensity   (recency-weighted |sentiment − 5.5|)
+            + 0.55 × frequency   (log of last-90-day entries, saturating at 50)
+            + 0.15 × depth       (% entries with vulnerable / honest / present / supportive tags)
 
-# Dev
-npm run dev
+perturbation (±0.5 max) = recent 2-week sentiment swing
+display = base + perturbation, clamped 0–10
+```
 
-# Build
-npm run build
+**Frequency is dominant by design** (recent user tuning). The intuition: people you write about a lot are people you actually think about a lot.
 
-# Type check
-npm run typecheck
+**Sample-size state** (`closenessState`):
+- `entries < 3` → `forming` — no rank, no analytics displayed, "X of 3 entries" shown
+- `entries >= 3` → `stable` — full score + trajectory + analytics
+
+**Per-entry impact** (`entryImpacts`): for each entry, returns the closeness delta from including it. Used on profile entry timeline to show "+0.4" / "−0.2" badges next to entries.
+
+**Trajectory** (`trajectoryFor`): `{ now, trendShort (vs 7 days ago, display), trendLong (vs 30 days ago, base) }`.
+
+**Cadence** (`cadenceFor`): last interaction, avg interval between entries.
+
+**Sentiment trend** (`sentimentHistory`): 12-week bucketed averages with delta vs prior 4 weeks. Rendered on profile via `<SentimentTrend>`.
+
+---
+
+## AI accuracy hardening — IMPORTANT
+
+The model can hallucinate patterns when asked open-ended questions. To prevent this:
+
+1. **Statistical pre-filter for insights.** `lib/insights.ts` detects real patterns *locally* (day-of-week sentiment, time-of-day, tag dominance, trajectory, gap unusual) with minimum cohort size + delta thresholds. Only patterns that pass the thresholds get sent to Claude. Claude's job is **phrase, not find.** This eliminates the main hallucination risk.
+
+2. **Correction memory.** The last 5 user corrections (re-attributions, sentiment overrides) feed back into the next parse prompt as few-shot examples. Implemented in `lib/ai.ts`. `aiPredictedPersonName` and `aiPredictedSentiment` are snapshotted on save and never mutated — comparison to current entry state detects corrections.
+
+3. **Confidence thresholds for attribution.**
+   - `> 0.85` → auto-attribute, show "Logging to X · change"
+   - `0.5 – 0.85` → soft prompt "is this about X? confirm or pick"
+   - `< 0.5` → explicit picker
+
+4. **Person emergence.** First mention of a new name with confidence > 0.7 → store as transient. Second distinct mention → promote to real person. Transient persons hide from the ratings page.
+
+5. **Name disambiguation.** When AI extracts a name that collides with multiple existing people (same first name), the compose detection card shows a picker listing each candidate with relationship + last-seen + entry count. Plus a "+ a different X" option that prompts for a qualifier ("R" → creates "Maya R").
+
+---
+
+## Compose flow (`components/compose-card.tsx`)
+
+The home page's primary surface. Heavily iterated. Current design:
+
+- **No border, no card.** Textarea sits directly on cream page background.
+- **Adaptive `…` placeholder.** Pulses opacity 25% → 65% → 25% on a 1.8s loop while empty.
+- **Inline name highlighting.** Known person names get a faint coral chip (`.folks-name-highlight`) inline as you type/speak. Uses a textarea-mirror overlay div for the highlight to appear behind the caret.
+- **Mention chips** below the textarea: when known names appear, render `fran · 5 prev` / `maya · 12 prev` coral chips so you can see you're building a thread.
+- **Solid black writing line** (1px solid `ink-primary`) below the textarea — moves down as the textarea auto-grows. Reads as a notebook page being written on.
+- **Muted mic.** 44px, no border, transparent background, `ti-microphone` glyph in mid-tan. Becomes the bold coral disc with stop icon only during active recording.
+- **Auto-save draft** to localStorage (`folks_compose_draft`). Survives backgrounded app, reload, mid-recording crash. Cleared on successful save.
+- **Voice punctuation.** When recording stops, raw transcript is sent to `/api/punctuate` (Claude Haiku). Status briefly shows `cleaning up…`. Result replaces raw text.
+- **iOS speech recognition workarounds.** Single-utterance mode (`continuous = false`), auto-restarted in `onend` if user hasn't tapped stop — simulates continuous recognition without iOS Safari's continuous-mode bugs. Handles `no-speech` errors gracefully (just restarts).
+- **Detection card** after save: shows attribution + name-clash picker + low-confidence prompt + feedback check-in + sentiment dots + tags + engine/confidence footer.
+
+### Feedback check-in slider (`components/feedback-check-in.tsx`)
+
+When AI flags an entry as heavy (sentiment ≤ 4 OR tag ∈ {draining, exhausting, anxious, cold}), the detection card surfaces a face-icon slider: `ti-mood-sad` (coral) → range slider → `ti-mood-happy` (sage). User drags to their felt-sense, taps "got it" → entry's sentiment is overridden + correction signal captured.
+
+---
+
+## Privacy commitments (user-facing promises)
+
+- **Voice transcription is on-device** (Web Speech API in browser).
+- **Default to local-only storage** (Dexie/IndexedDB). Cloud sync is explicit opt-in (v2).
+- **Only entry text leaves device** — sent to Anthropic for parsing. Audio blobs stay local.
+- **No social features in v1.** No sharing, no friend-of-friend, no public profiles, no exports of other people's names.
+- **Data export** — one-tap JSON dump from settings.
+- **Data delete** — irreversible "wipe everything" from settings, two confirmations.
+
+---
+
+## Lock / passcode system (`lib/lock.ts`)
+
+PBKDF2-SHA-256, 100k iterations, 16-byte random salt. Hash stored in localStorage. Two unlock modes:
+- `every-time` — every protected surface prompts on entry
+- `this-session` — unlock once per tab session, re-lock on tab hide/close
+
+Protected surfaces: `/journal`, `/ratings`, `/person/[id]`. **Home (`/`) is NOT locked** — compose stays one tap away.
+
+Forgot-passcode flow: "wipe everything" path. Confirms twice, then clears all Dexie tables + relevant localStorage keys via `wipeEverything()`.
+
+Onboarding gate: `hasLockPin()`. First-timers (no passcode) get routed to `/onboarding/1`. Setting a passcode during onboarding is what marks completion.
+
+---
+
+## User communication preferences
+
+These are HARD preferences from the project owner. Violating them will cause friction:
+
+- **Be critical/analytical, push back on scope creep.** Don't agree with everything. Honest disagreement is welcomed; sycophancy isn't.
+- **Default to shipping sooner.** Don't gold-plate.
+- **Build module-by-module, not whole-app-at-once.**
+- **Don't write code that wasn't asked for.** No defensive abstractions, no future-proofing.
+- **Concrete options over abstract advice.** When proposing alternatives, show them as a numbered list with tradeoffs.
+- **Short responses for fast back-and-forth.** Tight paragraphs, no headers if not needed.
+- **Be honest about limitations.** Don't pretend mock parser = real Claude.
+- **Match the user's reading style.** They use lowercase casually and sentence fragments — your responses can too.
+
+---
+
+## What to AVOID
+
+These have been explicitly rejected or are anti-patterns for this product:
+
+- **Don't make the app a chatbot/agent.** Keep the journal-as-mechanism identity.
+- **Don't add data collection** — privacy is the moat.
+- **Don't add tap-to-correct buttons on AI insights** — feels like "review my homework," kills journaling flow.
+- **Don't add filter UI on the journal** — use search; per-person filter is already on profile pages.
+- **Don't try to build a proprietary AI model.** Wrappers win on UX/taste, not on ML.
+- **Don't call the ratings page "leaderboard"** in UI copy. It's "your folks."
+- **Don't add emojis to UI.** Tabler outline icons only.
+- **Don't introduce competing aesthetic patterns** (purple gradients, Inter font, glassmorphism, default shadcn, big shadows).
+- **Don't add dark mode in v1.**
+- **Don't ship native iOS in v1.** PWA only. TestFlight is a v1.1+ decision.
+- **Don't bundle ANTHROPIC_API_KEY into the client** ever. Server-side only.
+
+---
+
+## Open product questions (deferred, not resolved)
+
+1. **Closeness philosophy.** Current model: intensity = closeness regardless of valence (extreme negative still adds to base). Open question: should this become "positive engagement only"? Owner has signaled the algorithm should still feel more dramatic on negative entries but explicitly likes seeing per-entry impact deltas now.
+2. **Time-spent capture.** Currently not modeled. Could be inferred from text ("long talk" vs "quick wave") via parse — not yet implemented.
+3. **AI agent intent detection.** Proposed: parse step detects when an entry is actually an instruction ("merge the two maya's", "actually mark is my brother"). Not yet built. Owner sees the appeal but doesn't want to lose the journaling identity.
+4. **Ratings page redesign.** Proposed: keep ranked list + use first sentence of each person's existing Reading as the row body (turns the page from leaderboard → editorial almanac). Owner approved direction, not yet built.
+5. **Journal-feel refactor.** Owner has flagged that `/journal` "feels like a feed." Proposed cleanups: larger date headers, drop quotation marks, soften row chrome, group same-day same-person entries as a session. Not yet built.
+6. **TestFlight wrap.** Owner has Apple Developer account ready. Path: Vercel (done) → Capacitor wrap pointing at Vercel URL → Xcode archive → upload → TestFlight. Not started.
+7. **App name.** "folks" is current. Owner has said this is working but not necessarily final.
+
+---
+
+## Repo layout
+
+```
+/app
+  layout.tsx              Root layout with Fraunces + JetBrains Mono, manifest, viewport
+  page.tsx                Home — compose + recent + first-folk flow
+  globals.css             Color vars, phone-frame chrome, scroll lock, animations
+  /api/parse              Claude Sonnet parse endpoint
+  /api/reading            Claude Opus reading endpoint
+  /api/insights           Claude Sonnet insights (statistically pre-filtered)
+  /api/punctuate          Claude Haiku transcript cleanup
+  /api/status             {aiReady} health check
+  /journal                Entry feed with adaptive search
+  /onboarding/1..4        4-screen flow, body scroll-locked by layout.tsx
+  /onboarding/layout.tsx  Locks body+html overflow while in onboarding
+  /person/[id]            Profile — locked outer, internal scroll on content
+  /ratings                "your folks" ranked + forming sections
+  /settings               You / security / help / data / developer / about
+  /test                   Dev-only parser sandbox
+
+/components
+  compose-card.tsx        The home-screen compose surface (central piece, heavily iterated)
+  sentiment-slider.tsx    10-dot row (used in detection card)
+  feedback-check-in.tsx   Heavy-entry face-icon slider
+  lock-screen.tsx         PIN-pad screen for protected surfaces
+  pin-pad.tsx             4-digit pin input (label-wrapped native input)
+  locked-recent.tsx       The home-screen "locked recent entries" teaser
+  passcode-activity-tracker.tsx  Re-locks on tab hide via visibilitychange
+  onboarding-demo.tsx     CSS-animated 9s loop on onboarding step 2
+  sentiment-trend.tsx     12-week sentiment line chart for profile analytics
+  sparkline.tsx           Reusable inline SVG sparkline (closeness history)
+  progress-indicator.tsx  Onboarding 1—4 dots
+
+/lib
+  db.ts                   Dexie schemas + queries (findPersonByName, findPeopleByFirstName, createPerson, getMeta, setMeta)
+  ai.ts                   parseEntry (real Claude + mock fallback), correction memory, name extraction
+  reading.ts              generateReading (Opus), saveReading, updatePersonContext, READING_CATEGORIES
+  insights.ts             detectPatterns (LOCAL statistical filter), generateInsights (Claude phrases them), saveInsights
+  closeness.ts            baseClosenessFor, sentimentPerturbation, closenessFor, trajectoryFor, cadenceFor, sentimentHistory, entryImpacts, recomputePerson, recomputeAll
+  save-entry.ts           saveEntry, updateEntrySentiment, updateEntryText, updateEntryAttribution, mergePerson, removePerson, deleteEntry, pruneAllOrphans, wipeEverything
+  lock.ts                 PBKDF2 hashing, hint, isUnlocked, useLockState, UNLOCK_MODES
+  seed.ts                 seedTestData (5 people, ~17 entries spread over 6 weeks)
+
+/types/index.ts           Entry, Person, ParseResponse, Tag, TAG_VOCABULARY
+
+/public
+  manifest.webmanifest    PWA manifest
+  apple-touch-icon.png    180×180 iOS home-screen icon
+  icon-192.png / icon-512.png / favicon-16.png / favicon-32.png
+  icon.svg                Vector source of italic-'f' wordmark
+
+.env.local                ANTHROPIC_API_KEY (gitignored)
+.env.local.example        Template for the env file (committed)
+.gitignore                Excludes .env*.local, .next, node_modules
+.npmrc                    legacy-peer-deps=true
+vercel.json               Explicit install command for Vercel
 ```
 
 ---
 
-## Success metrics (v1)
+## How to start a new conversation
 
-| Tier | Metric | Target |
-|------|--------|--------|
-| Primary | D7 retention | 40%+ |
-| Secondary | Avg entries / active user / week | 3+ |
-| Tertiary | Avg tracked people / active user | 5+ |
-| Quality | Crash-free sessions | 99.5%+ |
-| AI quality | Attribution accuracy (manually sampled) | 85%+ |
+When you open a fresh Claude chat to work on folks, paste this at the top of your first message:
+
+> Reading the CLAUDE.md in this repo first. I'm working on folks — the AI journal that maps closeness based on what the user logs. The aesthetic is cream + italic serif + Tabler outline icons; the privacy story is local-only; the user prefers tight, critical, opinionated responses over agreeable ones. I'll push back on scope creep and default to shipping the smallest version of a feature.
+
+Then state the actual task.
 
 ---
 
-## Open product questions (deferred)
+## Last-shipped reminders (rotating — update periodically)
 
-These are real decisions still on the table — flag if working on adjacent code:
-
-1. **Cold start UX**: new user opens app, sees empty list. First-entry prompt mitigates partially. Track first-entry → first-ranked-friend conversion as leading retention indicator.
-2. **AI attribution failure handling**: if Claude is wrong frequently, trust erodes fast. Track manual-override rate. If >30% of entries get overridden, prompt needs revision.
-3. **Tag vocabulary**: 10 paired dimensions is opinionated. Worth A/B testing free-form tags vs. fixed vocabulary once we have users.
-4. **The Reading card cringe risk**: AI personality summaries can land as insightful or invasive. Currently tuned observational. Worth user-testing with real entries before shipping widely.
-5. **Privacy framing in marketing**: "I track my friends" reads cute to some, surveillance-y to others. Marketing copy should lean introspective ("learn what your friends mean to you") not data-collection ("we analyze your relationships").
-6. **App name**: "Circle" is a working placeholder. Needs a real decision before launch.
+- Closeness weights: intensity 30%, frequency 55%, depth 15% (frequency-dominant per recent tuning)
+- Per-entry impact badges live on profile timeline (`+0.4` / `−0.2` mono labels next to timestamp)
+- Compose has zero box chrome — adaptive `…`, solid black writing line below textarea, dashed-free mic
+- Journal search uses dashed-to-solid border that solidifies on focus or type
+- AI insights now statistically pre-filtered locally before Claude phrases them — eliminates pattern hallucination
+- Voice transcript auto-punctuates via Haiku after recording stops ("cleaning up…")
+- Sentiment correction signals are **captured** on save but **not yet fed into the parse prompt** as few-shot examples — wire that up when AI sentiment reads feel noisy
 
 ---
 
-## What good looks like (taste calibration for the agent)
-
-When in doubt, the home screen should look more like a Day One entry page than a Notion dashboard. The friends list rows should feel like lines in a notebook, not rows in a database. The mic FAB should feel like the only saturated thing on the screen. If you find yourself adding decorative chrome, remove it. Restraint is the aesthetic.
-
-*— end of CLAUDE.md*
+*Owner contact: arthurwangtennis@gmail.com · GitHub robtywang · Apple Developer account ready for TestFlight when PWA validates.*
