@@ -29,14 +29,6 @@ function formatDate(): string {
   });
 }
 
-/** Unix-ms for the most recent Sunday at 00:00 local time. */
-function startOfWeekLocal(): number {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - d.getDay()); // getDay: 0=Sun
-  return d.getTime();
-}
-
 /** Format the time-since-last-entry indicator. Returns null when hidden. */
 function formatLastEntryLabel(lastEntryAt: number | null): string | null {
   if (lastEntryAt === null) return null;
@@ -73,14 +65,6 @@ export default function Home() {
     [],
     null as Entry | null
   );
-  const weekStart = startOfWeekLocal();
-  const entriesThisWeek = useLiveQuery(
-    async () =>
-      db.entries.where('createdAt').aboveOrEqual(weekStart).count(),
-    [weekStart],
-    0
-  );
-
   // First-stable arrival editorial line. Backed by Meta.firstStableSeenAt
   // which is set the first time any person reaches stable (entryCount >= 3).
   // The line displays for 24h after the timestamp, then auto-hides forever.
@@ -95,7 +79,6 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      // If we already know the stable timestamp, no further work needed.
       if (firstStableSeenAt !== null) return;
       const stored = await getMeta<number>('firstStableSeenAt');
       if (cancelled) return;
@@ -103,8 +86,12 @@ export default function Home() {
         setFirstStableSeenAt(stored);
         return;
       }
-      // Not yet stamped — check current people. If any are stable, stamp now.
-      if (peopleCount > 0) {
+      // ONLY stamp when this is genuinely the first stable arrival —
+      // i.e. exactly one person is stable right now. For existing users
+      // who already have several stable people, we skip the stamp entirely
+      // so they never see the celebratory line (it doesn't help retention
+      // for someone with 43 entries; it just clutters).
+      if (peopleCount === 1) {
         const now = Date.now();
         await setMeta('firstStableSeenAt', now);
         if (!cancelled) setFirstStableSeenAt(now);
@@ -116,11 +103,12 @@ export default function Home() {
   }, [peopleCount, firstStableSeenAt]);
 
   const lastEntryLabel = formatLastEntryLabel(lastEntry?.createdAt ?? null);
-  const weekLabel = `${entriesThisWeek} ${
-    entriesThisWeek === 1 ? 'ENTRY' : 'ENTRIES'
-  } THIS WEEK`;
+  // Line shows only while the user still has exactly one stable person AND
+  // we're inside the 24h window. The moment they get a second stable person,
+  // the line hides — they're past the "first" moment.
   const showFirstStableLine =
     firstStableSeenAt !== null &&
+    peopleCount === 1 &&
     Date.now() - firstStableSeenAt < 24 * 60 * 60 * 1000;
 
   // Boot: gate onboarding by passcode presence. If the user has a passcode set,
@@ -276,21 +264,22 @@ export default function Home() {
         </h1>
       </div>
 
-      {/* Retention indicators — week counter left, last-entry right.
-          Balanced left/right pair beneath the date. */}
-      <div
-        className="mt-2 flex items-center justify-between"
-        style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: 10.5,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          color: 'var(--ink-tertiary)',
-        }}
-      >
-        <span>{weekLabel}</span>
-        {lastEntryLabel && <span>{lastEntryLabel}</span>}
-      </div>
+      {/* Single retention indicator: surfaces only when 24h+ since the last
+          entry. Centered, quiet, no static counter chrome. */}
+      {lastEntryLabel && (
+        <div
+          className="mt-2 text-center"
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 10,
+            letterSpacing: '0.06em',
+            textTransform: 'uppercase',
+            color: 'var(--ink-tertiary)',
+          }}
+        >
+          {lastEntryLabel}
+        </div>
+      )}
 
       {/* First-stable arrival editorial line — visible for 24h after the
           user's first person hits stable (entryCount >= 3). */}
