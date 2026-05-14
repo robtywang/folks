@@ -12,6 +12,41 @@ import {
 import { SentimentSlider } from './sentiment-slider';
 import { FeedbackCheckIn } from './feedback-check-in';
 
+/**
+ * Pick a journal-coach-style prompt for the textarea placeholder. Time-of-day
+ * aware: a morning user gets a different question than a 1am user. Pulled
+ * once on component mount so it doesn't shuffle mid-session.
+ */
+function pickContextualPrompt(): string {
+  const hour = new Date().getHours();
+  const morning = [
+    'how are you starting today?',
+    "anything you're hoping for today?",
+    'who do you want to think about?',
+  ];
+  const afternoon = [
+    'anything from earlier still sitting with you?',
+    "what's on your mind right now?",
+    'who did you see today?',
+  ];
+  const evening = [
+    'how was today?',
+    'who left an impression today?',
+    'any small moment worth keeping?',
+  ];
+  const late = [
+    "what's keeping you up?",
+    'anything left unsaid today?',
+    'how are you feeling tonight?',
+  ];
+  let pool = afternoon;
+  if (hour >= 5 && hour < 12) pool = morning;
+  else if (hour < 17) pool = afternoon;
+  else if (hour < 22) pool = evening;
+  else pool = late;
+  return pool[Math.floor(Math.random() * pool.length)]!;
+}
+
 type Status =
   | 'idle'
   | 'typing'
@@ -52,6 +87,10 @@ export function ComposeCard({
   onSaveComplete,
 }: ComposeCardProps = {}) {
   const [text, setText] = useState('');
+
+  // Time-contextual prompt — picked once per mount so it feels like the app
+  // is asking *you* something today, not a generic form label.
+  const [prompt] = useState(() => pickContextualPrompt());
 
   // Persist the in-progress compose to localStorage so a backgrounded app,
   // accidental refresh, or mid-recording crash doesn't lose what the user
@@ -480,7 +519,7 @@ export function ComposeCard({
                 if (status !== 'saving') setStatus('typing');
                 onInteraction?.();
               }}
-              placeholder="…"
+              placeholder={`· ${prompt}`}
               disabled={isSaving || isCleaning}
               rows={2}
               className="folks-adaptive-placeholder relative w-full resize-none bg-transparent text-[16px] leading-relaxed text-ink-primary placeholder:italic placeholder:text-ink-tertiary focus:outline-none disabled:opacity-50"
@@ -514,12 +553,10 @@ export function ComposeCard({
           </div>
         )}
 
-        {/* Solid writing-line under the active typing area. Reads as the line
-            you're writing on — moves down as the textarea auto-grows. */}
-        <div
-          className="mt-3 mb-3"
-          style={{ borderTop: '1px solid var(--ink-primary)' }}
-        />
+        {/* No divider. The compose surface flows directly into the action
+            row — keeps the page feeling like a quiet conversation with the
+            AI rather than a form with sections. */}
+        <div className="mt-4" />
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
