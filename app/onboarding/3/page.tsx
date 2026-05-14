@@ -198,6 +198,19 @@ function StepFraming({ onAdvance }: { onAdvance: () => void }) {
           set a 4-digit code to lock your circle.
         </p>
       </div>
+      <p
+        className="italic"
+        style={{
+          maxWidth: 320,
+          fontFamily: 'var(--font-fraunces)',
+          fontSize: 16,
+          lineHeight: 1.45,
+          color: 'var(--ink-secondary)',
+        }}
+      >
+        your folks list takes shape after about a week. write a sentence a
+        night — that's all it takes.
+      </p>
       <button
         onClick={onAdvance}
         className="text-[16px] text-accent-coral"

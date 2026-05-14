@@ -1037,6 +1037,43 @@ export function ComposeCard({
             </div>
           )}
 
+          {/* Forming forward-feedback — tells the user how close this person
+              is to appearing on /ratings. Suppressed for muted, transient,
+              or already-stable persons (the per-entry impact badge already
+              covers stable folks). */}
+          {(() => {
+            const pid = result.entry.personId;
+            if (!pid) return null;
+            const person = allPeople.find((p) => p.id === pid);
+            if (!person) return null;
+            if (person.muted || person.isTransient) return null;
+            const n = person.entryCount;
+            const lower = person.name.toLowerCase();
+            let line: string | null = null;
+            if (n === 1) {
+              line = `${lower}, forming. two more entries about them and they'll appear on your folks list.`;
+            } else if (n === 2) {
+              line = `${lower}, almost there. one more entry and they appear on your folks list.`;
+            } else if (n === 3) {
+              line = `${lower} is on your folks list.`;
+            }
+            if (!line) return null;
+            return (
+              <p
+                style={{
+                  marginTop: 10,
+                  fontFamily: 'var(--font-fraunces)',
+                  fontStyle: 'italic',
+                  fontSize: 14,
+                  lineHeight: 1.45,
+                  color: 'var(--ink-secondary)',
+                }}
+              >
+                {line}
+              </p>
+            );
+          })()}
+
           {/* Always-visible footer — at-a-glance verdict on AI detection.
               Engine tells you whether the real Claude ran or the mock parser
               took over; confidence tells you how sure the engine was. */}
