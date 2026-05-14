@@ -51,6 +51,22 @@ export function ComposeCard({
   onSaveComplete,
 }: ComposeCardProps = {}) {
   const [text, setText] = useState('');
+
+  // Persist the in-progress compose to localStorage so a backgrounded app,
+  // accidental refresh, or mid-recording crash doesn't lose what the user
+  // wrote/spoke. Cleared on successful save.
+  useEffect(() => {
+    try {
+      const draft = localStorage.getItem('folks_compose_draft');
+      if (draft) setText(draft);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      if (text.trim()) localStorage.setItem('folks_compose_draft', text);
+      else localStorage.removeItem('folks_compose_draft');
+    } catch {}
+  }, [text]);
   const [interim, setInterim] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [result, setResult] = useState<SaveResult | null>(null);
@@ -319,6 +335,9 @@ export function ComposeCard({
       setResult(r);
       setAttributionConfirmed(false); // reset for the new detection
       setText('');
+      try {
+        localStorage.removeItem('folks_compose_draft');
+      } catch {}
       setStatus('result');
       onSaveComplete?.(r);
     } catch (err) {
