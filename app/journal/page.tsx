@@ -482,10 +482,11 @@ function JournalEntry({
         <span
           style={{
             fontFamily: 'var(--font-mono)',
-            fontSize: 10.5,
+            fontSize: 11,
+            fontWeight: 500,
             letterSpacing: '0.08em',
             textTransform: 'uppercase',
-            color: 'var(--ink-tertiary)',
+            color: 'var(--ink-secondary)',
           }}
         >
           {shortTime(entry.createdAt)}
