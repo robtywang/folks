@@ -12,3 +12,4 @@
 # misc
 *.log
 .DS_Store
+tsconfig.tsbuildinfo
