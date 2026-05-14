@@ -26,7 +26,10 @@ interface FormingRow {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DELTA_FLAT_THRESHOLD = 0.05;
+// Show a chevron only when the 7-day delta is meaningful. 0.05 was too
+// sensitive — every entry would move the score past that. 0.4 ≈ the impact
+// of one strong entry, so "flat" reads as the natural default state.
+const DELTA_FLAT_THRESHOLD = 0.4;
 
 function chevronClass(delta: number): string {
   if (delta > DELTA_FLAT_THRESHOLD) return 'ti ti-chevron-up';

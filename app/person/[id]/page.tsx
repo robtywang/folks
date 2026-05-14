@@ -29,9 +29,9 @@ function monogram(name: string): string {
 }
 
 // Profile-page-local helpers for the redesigned trajectory card.
-// Matches the chevron treatment used on /ratings exactly: ±0.05 flat threshold,
+// Matches the chevron treatment used on /ratings exactly: ±0.4 flat threshold,
 // bright sage / coral / ink-tertiary colour ramp, U+2212 minus, em-dash for flat.
-const DELTA_FLAT = 0.05;
+const DELTA_FLAT = 0.4;
 function chevronClass(delta: number): string {
   if (delta > DELTA_FLAT) return 'ti ti-chevron-up';
   if (delta < -DELTA_FLAT) return 'ti ti-chevron-down';
