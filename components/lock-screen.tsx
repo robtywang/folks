@@ -92,7 +92,7 @@ export function LockScreen({
   // Confirmation overlay state — replaces the lock UI when active.
   if (confirmWipe) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-6 pb-20">
+      <main className="mx-auto flex h-[100svh] w-full max-w-md flex-col items-center justify-center overflow-hidden px-6 pb-20">
         <div
           className="flex h-14 w-14 items-center justify-center rounded-full"
           style={{
@@ -159,7 +159,7 @@ export function LockScreen({
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col items-center justify-center px-6 pb-24">
+    <main className="mx-auto flex h-[100svh] w-full max-w-md flex-col items-center justify-center overflow-hidden px-6 pb-24">
       <div
         className="flex h-14 w-14 items-center justify-center rounded-full"
         style={{

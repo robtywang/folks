@@ -194,7 +194,7 @@ export default function RatingsPage() {
   }, []);
 
   if (!gateChecked) {
-    return <main className="mx-auto min-h-screen w-full max-w-md" />;
+    return <main className="mx-auto h-[100svh] w-full max-w-md overflow-y-auto" />;
   }
   if (!unlocked) {
     return (
@@ -210,7 +210,7 @@ export default function RatingsPage() {
   const totalRows = ranked.length + forming.length;
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-6">
+    <main className="mx-auto h-[100svh] w-full max-w-md overflow-y-auto px-4 pb-12 pt-6">
       {/* Top bar — minimal, just back arrow */}
       <header className="flex items-center">
         <Link

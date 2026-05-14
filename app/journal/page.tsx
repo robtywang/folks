@@ -100,7 +100,7 @@ export default function JournalPage() {
   }, []);
 
   if (!gateChecked) {
-    return <main className="mx-auto min-h-screen w-full max-w-md" />;
+    return <main className="mx-auto h-[100svh] w-full max-w-md overflow-y-auto" />;
   }
 
   if (!unlocked) {
@@ -152,7 +152,7 @@ function JournalContent() {
   );
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-6">
+    <main className="mx-auto h-[100svh] w-full max-w-md overflow-y-auto px-4 pb-12 pt-6">
       <header className="flex items-center justify-between">
         <Link
           href="/"

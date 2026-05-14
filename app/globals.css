@@ -26,23 +26,22 @@ body {
   background-color: var(--bg-cream);
   color: var(--ink-primary);
   font-family: var(--font-fraunces), Georgia, serif;
-  /* Force light color-scheme so iOS PWA never renders a default-white
-     overscroll layer behind our cream content. */
   color-scheme: light;
 }
 
 html {
-  /* In iOS PWA standalone mode, the html element is the root surface that
-     shows through any overscroll. Lock it to the dynamic viewport height
-     with a cream backdrop so no white is ever visible. */
   background-color: var(--bg-cream);
-  min-height: 100dvh;
+  /* Hard-lock the root surface to the dynamic viewport. Body never scrolls;
+     pages that need to scroll do so within an internal container. */
+  height: 100dvh;
+  overflow: hidden;
 }
 
 body {
   background-color: var(--bg-cream);
-  min-height: 100dvh;
+  height: 100dvh;
   margin: 0;
+  overflow: hidden;
 }
 
 /* Hide default focus rings, replace with subtle ones */
@@ -162,13 +161,15 @@ body {
 
 .phone-frame {
   position: relative;
-  min-height: 100svh;
+  height: 100svh;
+  overflow: hidden;
   background: var(--bg-cream);
   /* Push content below the iOS status bar / home indicator. With
      viewport-fit: cover the web view extends under the system chrome;
      these env() insets ensure interactive content stays visible. */
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+  box-sizing: border-box;
 }
 
 .phone-frame::before {
@@ -190,6 +191,8 @@ body {
   html,
   body {
     background: #1f1a14;
+    height: 100dvh;
+    overflow: hidden;
   }
 
   body {
