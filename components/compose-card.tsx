@@ -177,27 +177,42 @@ export function ComposeCard({
       return;
     }
 
+    // iOS Safari's WebSpeech API is buggy with continuous=true — it silently
+    // stops delivering results after a brief pause. We detect iOS and fall
+    // back to single-utterance mode, auto-restarting in onend until the user
+    // explicitly stops. This mimics continuous behavior reliably.
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
     const recognition = new SpeechRecognition();
-    recognition.continuous = true;
+    recognition.continuous = !isIOS;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
     // Snapshot whatever's already in the textarea so voice appends to it
-    // rather than overwriting it.
-    const baseText = text ? text + ' ' : '';
-    let finalTranscript = '';
+    // rather than overwriting it. The running accumulator is needed across
+    // restarts on iOS so we don't lose earlier utterances.
+    let baseText = text ? text + ' ' : '';
+    let userStopped = false;
 
     recognition.onresult = (event: any) => {
+      let finalChunk = '';
       let interimTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const transcript = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          finalTranscript += transcript;
+          finalChunk += transcript;
         } else {
           interimTranscript += transcript;
         }
       }
-      setText(baseText + finalTranscript);
+      if (finalChunk) {
+        baseText = baseText + finalChunk;
+        setText(baseText);
+      } else {
+        setText(baseText + interimTranscript);
+      }
       setInterim(interimTranscript);
     };
 
@@ -205,21 +220,44 @@ export function ComposeCard({
       const code: string = e?.error ?? 'unknown';
       console.warn('Speech recognition error:', code);
       setInterim('');
-      if (code === 'aborted') {
-        setStatus(text ? 'typing' : 'idle');
+      // 'no-speech' is normal on iOS between utterances — don't error out,
+      // just let onend restart the recognizer.
+      if (code === 'aborted' || code === 'no-speech') {
+        if (!isIOS || userStopped) {
+          setStatus(text ? 'typing' : 'idle');
+        }
         return;
       }
+      userStopped = true;
       setErrorMessage(voiceErrorMessage(code));
       setStatus('error');
     };
 
     recognition.onend = () => {
       setInterim('');
+      // On iOS, single-utterance mode ends after each pause. If the user
+      // hasn't tapped stop, restart so it feels continuous.
+      if (isIOS && !userStopped) {
+        try {
+          recognition.start();
+          return;
+        } catch (err) {
+          console.warn('iOS recognizer restart failed:', err);
+        }
+      }
       if (status === 'recording') setStatus('typing');
     };
 
+    // Override stopVoice's flag so onend doesn't auto-restart.
+    recognitionRef.current = {
+      stop: () => {
+        userStopped = true;
+        try {
+          recognition.stop();
+        } catch {}
+      },
+    };
     recognition.start();
-    recognitionRef.current = recognition;
     setStatus('recording');
   }
 
