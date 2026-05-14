@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Fraunces, JetBrains_Mono } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 import { PasscodeActivityTracker } from '@/components/passcode-activity-tracker';
 import './globals.css';
 
@@ -72,6 +73,7 @@ export default function RootLayout({
       <body>
         <div className="phone-frame">{children}</div>
         <PasscodeActivityTracker />
+        <Analytics />
       </body>
     </html>
   );

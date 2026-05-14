@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",
+    "@vercel/analytics": "^2.0.1",
     "dexie": "^4.0.10",
     "dexie-react-hooks": "^1.1.7",
     "next": "^15.5.18",
