@@ -83,28 +83,6 @@ function groupByDay(entries: Entry[]): DayGroup[] {
 }
 
 /**
- * Within a day, group consecutive entries that share the same primary
- * personId into a session block. Entries with personId === null are each
- * their own session. The moment the consecutive personId changes, a new
- * session begins.
- */
-function groupBySession(entries: Entry[]): Entry[][] {
-  const sessions: Entry[][] = [];
-  for (const e of entries) {
-    const last = sessions[sessions.length - 1];
-    const lastPid = last?.[last.length - 1]?.personId;
-    const canContinue =
-      last !== undefined && e.personId !== null && lastPid === e.personId;
-    if (canContinue) {
-      last.push(e);
-    } else {
-      sessions.push([e]);
-    }
-  }
-  return sessions;
-}
-
-/**
  * Pulls the names that should be coral-linked inside this entry's text:
  * primary person (resolved via personId → lookup) + each additionalPeople
  * string that we can match to a known person record. Returns a map of
@@ -396,57 +374,49 @@ function JournalContent() {
               </p>
             </div>
           ) : (
-            groupByDay(filteredEntries).map((group, dayIdx) => {
-              const sessions = groupBySession(group.entries);
-              return (
-                <div
-                  key={group.key}
-                  style={{ marginTop: dayIdx === 0 ? 0 : 56 }}
+            groupByDay(filteredEntries).map((group, dayIdx) => (
+              <div
+                key={group.key}
+                style={{ marginTop: dayIdx === 0 ? 0 : 56 }}
+              >
+                <h2
+                  style={{
+                    fontFamily: 'var(--font-fraunces)',
+                    fontSize: 30,
+                    fontStyle: 'italic',
+                    fontWeight: 500,
+                    color: 'var(--ink-primary)',
+                    lineHeight: 1.15,
+                    marginBottom: 24,
+                  }}
                 >
-                  <h2
+                  {formatDateHeader(group.date)}
+                </h2>
+
+                {/* Strict reverse-chronological list — every entry stands
+                    alone, separated by a single hairline. No grouping. */}
+                {group.entries.map((entry, eIdx) => (
+                  <div
+                    key={entry.id}
                     style={{
-                      fontFamily: 'var(--font-fraunces)',
-                      fontSize: 30,
-                      fontStyle: 'italic',
-                      fontWeight: 500,
-                      color: 'var(--ink-primary)',
-                      lineHeight: 1.15,
-                      marginBottom: 24,
+                      borderTop:
+                        eIdx === 0
+                          ? 'none'
+                          : '1px solid var(--border-hair)',
+                      paddingTop: eIdx === 0 ? 0 : 20,
+                      paddingBottom: eIdx === group.entries.length - 1 ? 0 : 20,
                     }}
                   >
-                    {formatDateHeader(group.date)}
-                  </h2>
-
-                  {sessions.map((session, sIdx) => (
-                    <div
-                      key={sIdx}
-                      style={{
-                        borderTop:
-                          sIdx === 0
-                            ? 'none'
-                            : '1px solid var(--border-hair)',
-                        paddingTop: sIdx === 0 ? 0 : 20,
-                        paddingBottom: sIdx === sessions.length - 1 ? 0 : 20,
-                      }}
-                    >
-                      {session.map((entry, eIdx) => (
-                        <div
-                          key={entry.id}
-                          style={{ marginTop: eIdx === 0 ? 0 : 16 }}
-                        >
-                          <JournalEntry
-                            entry={entry}
-                            peopleById={peopleById}
-                            allPeople={allPeople}
-                            query={query}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              );
-            })
+                    <JournalEntry
+                      entry={entry}
+                      peopleById={peopleById}
+                      allPeople={allPeople}
+                      query={query}
+                    />
+                  </div>
+                ))}
+              </div>
+            ))
           )}
         </div>
       </div>
