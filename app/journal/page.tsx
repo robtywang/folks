@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
@@ -164,9 +164,25 @@ function JournalContent() {
     });
   }, [entries, peopleById, query]);
 
+  // Pull-up-to-reveal pattern: search bar sits at the very top of the scroll
+  // content, hidden by setting scrollTop past it on mount. Scrolling up at
+  // the top of the list brings it back into view (Apple Mail-style).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!scrollRef.current || entries.length === 0) return;
+    // Defer to next frame so layout has settled before we measure/scroll.
+    requestAnimationFrame(() => {
+      if (scrollRef.current) {
+        // 44 ≈ search row height (py-2 + 13px input + 0.5px border). Tuned
+        // visually rather than measured to avoid layout thrash.
+        scrollRef.current.scrollTop = 44;
+      }
+    });
+  }, [entries.length]);
+
   return (
-    <main className="mx-auto h-[100svh] w-full max-w-md overflow-y-auto px-4 pb-12 pt-6">
-      <header className="flex items-center justify-between">
+    <main className="mx-auto flex h-[100svh] w-full max-w-md flex-col overflow-hidden px-4 pt-6">
+      <header className="flex flex-shrink-0 items-center justify-between">
         <Link
           href="/"
           aria-label="Back"
@@ -183,38 +199,40 @@ function JournalContent() {
         <span aria-hidden="true" style={{ width: 18 }} />
       </header>
 
-      {/* Search line — just a single bottom hairline with the icon + input
-          on top. No box at all. */}
-      {entries.length > 0 && (
-        <div
-          className="relative mt-6 flex items-center"
-          style={{ borderBottom: '0.5px solid var(--border-hair)' }}
-        >
-          <i
-            className="ti ti-search pointer-events-none flex-shrink-0 text-ink-tertiary"
-            style={{ fontSize: 13 }}
-            aria-hidden="true"
-          />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="search entries"
-            className="ml-2 flex-1 bg-transparent py-2 text-[13px] italic text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
-            style={{ fontFamily: 'var(--font-fraunces)' }}
-          />
-          {query && (
-            <button
-              onClick={() => setQuery('')}
-              aria-label="Clear search"
-              className="ml-2 flex-shrink-0 text-ink-tertiary transition-colors hover:text-ink-primary"
-            >
-              <i className="ti ti-x" style={{ fontSize: 13 }} />
-            </button>
-          )}
-        </div>
-      )}
+      <div ref={scrollRef} className="-mx-4 flex-1 overflow-y-auto px-4 pb-12">
+        {/* Search line — lives at the top of the scroll surface, hidden by
+            an initial scrollTop offset. Pull up at the top of the list to
+            reveal. */}
+        {entries.length > 0 && (
+          <div
+            className="relative flex items-center"
+            style={{ borderBottom: '0.5px solid var(--border-hair)' }}
+          >
+            <i
+              className="ti ti-search pointer-events-none flex-shrink-0 text-ink-tertiary"
+              style={{ fontSize: 13 }}
+              aria-hidden="true"
+            />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="search entries"
+              className="ml-2 flex-1 bg-transparent py-2 text-[13px] italic text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
+              style={{ fontFamily: 'var(--font-fraunces)' }}
+            />
+            {query && (
+              <button
+                onClick={() => setQuery('')}
+                aria-label="Clear search"
+                className="ml-2 flex-shrink-0 text-ink-tertiary transition-colors hover:text-ink-primary"
+              >
+                <i className="ti ti-x" style={{ fontSize: 13 }} />
+              </button>
+            )}
+          </div>
+        )}
 
-      <div className="mt-8">
+        <div className="mt-8">
         <div className="mb-2 flex items-center gap-3">
           <span
             className="text-[10px] uppercase tracking-widest text-ink-secondary"
@@ -281,6 +299,7 @@ function JournalContent() {
             </div>
           ))
         )}
+        </div>
       </div>
     </main>
   );
