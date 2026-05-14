@@ -494,7 +494,10 @@ export default function PersonProfile({
         )}
       </div>
 
-      {/* Analytics — sentiment trend + AI insight cards */}
+      {/* Analytics — sentiment trend + AI insight cards.
+          Gated at 3 entries: below that, charts are noise and insights would
+          hallucinate. We show a soft locked state instead so the user sees
+          progress toward unlocking. */}
       {list.length > 0 && (
         <div className="mt-10">
           <div className="mb-2 flex items-center gap-3">
@@ -506,82 +509,106 @@ export default function PersonProfile({
             </span>
             <div className="h-px flex-1" style={{ background: 'var(--border-hair)' }} />
           </div>
-          <SentimentTrend
-            buckets={sentimentTrend.buckets}
-            lifetimeAvg={sentimentTrend.lifetimeAvg}
-            recentAvg={sentimentTrend.recentAvg}
-            delta={sentimentTrend.delta}
-          />
 
-          {/* AI insight cards */}
-          {(person.insightCards && person.insightCards.length > 0) || list.length >= 3 ? (
-            <div className="mt-6">
-              <div
-                className="mb-2 flex items-center justify-between"
+          {list.length < 3 ? (
+            <div
+              className="rounded-md px-3 py-3"
+              style={{
+                background: 'rgba(140, 126, 92, 0.06)',
+                border: '0.5px solid var(--border-hair)',
+              }}
+            >
+              <p
+                className="text-[13px] italic leading-snug text-ink-primary"
+                style={{ fontFamily: 'var(--font-fraunces)' }}
               >
-                <span
-                  className="text-[10px] uppercase tracking-widest text-ink-tertiary"
-                  style={{ fontFamily: 'var(--font-mono)' }}
-                >
-                  patterns
-                </span>
-                {(person.insightCards?.length ?? 0) > 0 && (
-                  <button
-                    onClick={handleGenerateInsights}
-                    disabled={insightsBusy}
-                    className="text-[10px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
+                analytics unlock at 3 entries.
+              </p>
+              <p
+                className="mt-1 text-[11px] italic leading-snug text-ink-tertiary"
+                style={{ fontFamily: 'var(--font-fraunces)' }}
+              >
+                {3 - list.length === 1
+                  ? 'one more entry about ' + person.name.toLowerCase() + ' to see patterns appear.'
+                  : `${3 - list.length} more entries about ${person.name.toLowerCase()} to see patterns appear.`}
+              </p>
+            </div>
+          ) : (
+            <>
+              <SentimentTrend
+                buckets={sentimentTrend.buckets}
+                lifetimeAvg={sentimentTrend.lifetimeAvg}
+                recentAvg={sentimentTrend.recentAvg}
+                delta={sentimentTrend.delta}
+              />
+
+              {/* AI insight cards */}
+              <div className="mt-6">
+                <div className="mb-2 flex items-center justify-between">
+                  <span
+                    className="text-[10px] uppercase tracking-widest text-ink-tertiary"
                     style={{ fontFamily: 'var(--font-mono)' }}
                   >
-                    {insightsBusy ? 'thinking…' : 'rerun ↻'}
-                  </button>
-                )}
-              </div>
-
-              {person.insightCards && person.insightCards.length > 0 ? (
-                <ul className="space-y-2">
-                  {person.insightCards.map((insight, i) => (
-                    <li
-                      key={i}
-                      className="rounded-md px-3 py-2 text-[13px] italic leading-snug text-ink-primary"
-                      style={{
-                        fontFamily: 'var(--font-fraunces)',
-                        background: 'rgba(140, 126, 92, 0.06)',
-                        borderLeft: '2px solid var(--ink-tertiary)',
-                      }}
+                    patterns
+                  </span>
+                  {(person.insightCards?.length ?? 0) > 0 && (
+                    <button
+                      onClick={handleGenerateInsights}
+                      disabled={insightsBusy}
+                      className="text-[10px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
+                      style={{ fontFamily: 'var(--font-mono)' }}
                     >
-                      {insight}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="flex items-center justify-between">
+                      {insightsBusy ? 'thinking…' : 'rerun ↻'}
+                    </button>
+                  )}
+                </div>
+
+                {person.insightCards && person.insightCards.length > 0 ? (
+                  <ul className="space-y-2">
+                    {person.insightCards.map((insight, i) => (
+                      <li
+                        key={i}
+                        className="rounded-md px-3 py-2 text-[13px] italic leading-snug text-ink-primary"
+                        style={{
+                          fontFamily: 'var(--font-fraunces)',
+                          background: 'rgba(140, 126, 92, 0.06)',
+                          borderLeft: '2px solid var(--ink-tertiary)',
+                        }}
+                      >
+                        {insight}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <p
+                      className="text-[12px] italic text-ink-tertiary"
+                      style={{ fontFamily: 'var(--font-fraunces)' }}
+                    >
+                      surface patterns the ai sees in your entries.
+                    </p>
+                    <button
+                      onClick={handleGenerateInsights}
+                      disabled={insightsBusy}
+                      className="text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
+                      style={{ fontFamily: 'var(--font-mono)' }}
+                    >
+                      {insightsBusy ? 'thinking…' : 'generate →'}
+                    </button>
+                  </div>
+                )}
+
+                {insightsError && (
                   <p
-                    className="text-[12px] italic text-ink-tertiary"
+                    className="mt-2 text-[11px] italic text-accent-coral"
                     style={{ fontFamily: 'var(--font-fraunces)' }}
                   >
-                    surface patterns the ai sees in your entries.
+                    {insightsError}
                   </p>
-                  <button
-                    onClick={handleGenerateInsights}
-                    disabled={insightsBusy}
-                    className="text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
-                    style={{ fontFamily: 'var(--font-mono)' }}
-                  >
-                    {insightsBusy ? 'thinking…' : 'generate →'}
-                  </button>
-                </div>
-              )}
-
-              {insightsError && (
-                <p
-                  className="mt-2 text-[11px] italic text-accent-coral"
-                  style={{ fontFamily: 'var(--font-fraunces)' }}
-                >
-                  {insightsError}
-                </p>
-              )}
-            </div>
-          ) : null}
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
 
