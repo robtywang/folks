@@ -455,10 +455,15 @@ export function ComposeCard({
 
   return (
     <div className="w-full">
-      {/* No box, no border. Just a writing surface that adapts to state.
-          Dashed underline below the textarea reads as a notebook line —
-          waiting, not chrome. */}
-      <div className="relative pt-2">
+      {/* Faint outline only — a barely-there cream box that defines the
+          writing surface without feeling like a form element. */}
+      <div
+        className="relative rounded-md px-4 py-3"
+        style={{
+          border: '0.5px solid var(--border-hair)',
+          background: 'rgba(255, 255, 255, 0.18)',
+        }}
+      >
         {isRecording ? (
           /* Live transcription view — replaces the textarea while recording so
              the words appear in the same space they would once committed.
