@@ -171,26 +171,31 @@ export default function OnboardingStep3() {
 
 function StepFraming({ onAdvance }: { onAdvance: () => void }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-8 text-center">
+    <div className="flex flex-1 flex-col items-center justify-center gap-7 text-center">
       <h1
         className="italic leading-tight text-ink-primary"
-        style={{ fontFamily: 'var(--font-fraunces)', fontSize: '32px' }}
+        style={{ fontFamily: 'var(--font-fraunces)', fontSize: '36px' }}
       >
         yours, only.
       </h1>
       <div
-        className="flex max-w-[300px] flex-col gap-4 text-[16px] italic leading-snug"
-        style={{ fontFamily: 'var(--font-fraunces)', color: '#8C7E5C' }}
+        className="flex max-w-[320px] flex-col gap-4 leading-snug"
+        style={{ fontFamily: 'var(--font-fraunces)' }}
       >
-        <p>
-          everything stays on this device.
+        <p
+          className="italic text-ink-primary"
+          style={{ fontSize: '17px' }}
+        >
+          every entry, every name, every score —
           <br />
-          nothing leaves unless you say so.
+          stored on this device and nowhere else.
         </p>
-        <p>
-          set a 4-digit code to lock
-          <br />
-          your circle, entries, and journal.
+        <p
+          className="italic"
+          style={{ fontSize: '14px', color: '#8C7E5C' }}
+        >
+          no account, no cloud, no one else can see them.
+          set a 4-digit code to lock your circle.
         </p>
       </div>
       <button

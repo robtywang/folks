@@ -51,6 +51,19 @@ export default function OnboardingStep2() {
         >
           <OnboardingDemo />
         </div>
+
+        <p
+          className="onboarding-fade-in max-w-[280px] text-[13px] italic leading-snug"
+          style={{
+            fontFamily: 'var(--font-fraunces)',
+            color: '#8C7E5C',
+            animationDelay: '1400ms',
+          }}
+        >
+          every entry stays on your device.
+          <br />
+          no one else can see them.
+        </p>
       </div>
 
       <div className="flex flex-col items-center gap-6 pb-10">
