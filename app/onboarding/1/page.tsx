@@ -23,13 +23,13 @@ export default function OnboardingStep1() {
           folks
         </h1>
         <p
-          className="mt-6 max-w-[280px] text-[18px] italic leading-snug"
+          className="mt-6 max-w-[300px] text-[18px] italic leading-snug"
           style={{
             fontFamily: 'var(--font-fraunces)',
             color: '#8C7E5C',
           }}
         >
-          find out who your real best friends are.
+          an ai journal for exploring who you're really close to.
         </p>
       </div>
 

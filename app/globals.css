@@ -320,21 +320,27 @@ body {
 }
 
 .folks-demo-rank-num {
+  display: inline-grid;
+  grid-template-areas: 'stack';
+  justify-items: start;
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--ink-tertiary);
-  position: relative;
 }
 
 .folks-demo-rank-name {
   color: var(--ink-primary);
+  text-align: left;
 }
 
 .folks-demo-rank-score {
+  display: inline-grid;
+  grid-template-areas: 'stack';
+  justify-items: end;
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--ink-secondary);
-  position: relative;
+  min-width: 24px;
 }
 
 .folks-demo-rank-arrow {
@@ -356,17 +362,17 @@ body {
   animation: folks-demo-maya-rise 9s ease-in-out infinite;
 }
 
-/* Before/after labels for swapping rank number + score */
+/* Before/after labels for swapping rank number + score.
+   Stacked in the same grid cell so they overlap cleanly without absolute
+   positioning hacks. Opacity animation crossfades them. */
 .folks-demo-rank-num-before,
 .folks-demo-score-before {
-  position: absolute;
-  inset: 0;
+  grid-area: stack;
   animation: folks-demo-before-fade 9s ease-in-out infinite;
 }
 .folks-demo-rank-num-after,
 .folks-demo-score-after {
-  position: absolute;
-  inset: 0;
+  grid-area: stack;
   opacity: 0;
   animation: folks-demo-after-fade 9s ease-in-out infinite;
 }

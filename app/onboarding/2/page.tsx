@@ -40,9 +40,9 @@ export default function OnboardingStep2() {
             animationDelay: '0ms',
           }}
         >
-          write about your day.
+          you write your day.
           <br />
-          your circle reveals itself.
+          the ai reveals your real circle.
         </p>
 
         <div
