@@ -143,8 +143,13 @@ body {
    backdrop so the prototype reads as a phone preview. */
 .phone-frame {
   position: relative;
-  min-height: 100vh;
+  min-height: 100svh;
   background: var(--bg-cream);
+  /* Push content below the iOS status bar / home indicator. With
+     viewport-fit: cover the web view extends under the system chrome;
+     these env() insets ensure interactive content stays visible. */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .phone-frame::before {

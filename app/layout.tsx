@@ -26,6 +26,9 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'folks',
+    // 'default' = light bar with dark icons over a solid theme-color band.
+    // Combined with the safe-area padding in .phone-frame, this fills the
+    // status-bar area with our cream background and keeps content below it.
     statusBarStyle: 'default',
   },
   icons: {
