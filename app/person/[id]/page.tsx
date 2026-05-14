@@ -7,12 +7,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import {
   cadenceFor,
-  closenessHistory,
   closenessState,
   entryImpacts,
   sentimentHistory,
   trajectoryFor,
-  trendReason,
   type ClosenessState,
 } from '@/lib/closeness';
 import { SentimentTrend } from '@/components/sentiment-trend';
@@ -21,7 +19,6 @@ import { generateInsights, saveInsights } from '@/lib/insights';
 import { removePerson, mergePerson } from '@/lib/save-entry';
 import { hasLockPin, isUnlocked } from '@/lib/lock';
 import { LockScreen } from '@/components/lock-screen';
-import { Sparkline } from '@/components/sparkline';
 import type { Entry, Person } from '@/types';
 
 function monogram(name: string): string {
@@ -31,11 +28,31 @@ function monogram(name: string): string {
   return (parts[0][0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
-function colorFromName(name: string): string {
-  let hash = 0;
-  for (const ch of name) hash = (hash * 31 + ch.charCodeAt(0)) | 0;
-  const palette = ['#C8553D', '#6F7D63', '#8C7E5C', '#B4A689', '#A06B5C', '#7B8AA1'];
-  return palette[Math.abs(hash) % palette.length]!;
+// Profile-page-local helpers for the redesigned trajectory card.
+// Matches the chevron treatment used on /ratings exactly: ±0.05 flat threshold,
+// bright sage / coral / ink-tertiary colour ramp, U+2212 minus, em-dash for flat.
+const DELTA_FLAT = 0.05;
+function chevronClass(delta: number): string {
+  if (delta > DELTA_FLAT) return 'ti ti-chevron-up';
+  if (delta < -DELTA_FLAT) return 'ti ti-chevron-down';
+  return 'ti ti-minus';
+}
+function chevronColor(delta: number): string {
+  if (delta > DELTA_FLAT) return 'var(--accent-sage)';
+  if (delta < -DELTA_FLAT) return 'var(--accent-coral)';
+  return 'var(--ink-tertiary)';
+}
+function deltaText(delta: number): string {
+  if (delta > DELTA_FLAT) return `+${delta.toFixed(1)}`;
+  if (delta < -DELTA_FLAT) return `−${Math.abs(delta).toFixed(1)}`;
+  return '—';
+}
+
+function cadenceLastLabel(lastInteraction: number): string {
+  const days = Math.floor((Date.now() - lastInteraction) / 86_400_000);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  return `${days} days ago`;
 }
 
 function relativeDate(timestamp: number): string {
@@ -246,8 +263,6 @@ export default function PersonProfile({
   const list = entries ?? [];
   const state = closenessState(list);
   const trajectory = state.status === 'stable' ? trajectoryFor(list) : null;
-  const annotation = trajectory ? trendReason(list, trajectory.trendShort) : '';
-  const history = closenessHistory(list, 9, 7); // ~60-day weekly sample
   const sentimentTrend = sentimentHistory(list, 12); // 12-week sentiment chart
   const cadence = cadenceFor(list);
   const impacts = entryImpacts(list); // entry.id → closeness delta from that entry
@@ -264,13 +279,25 @@ export default function PersonProfile({
       {/* Identity */}
       <div className="mt-10 flex items-center gap-4">
         <div
-          className="flex h-14 w-14 items-center justify-center rounded-full text-[18px] text-white"
+          className="flex items-center justify-center"
           style={{
-            background: colorFromName(person.name),
-            fontFamily: 'var(--font-fraunces)',
+            width: 60,
+            height: 60,
+            borderRadius: '50%',
+            border: '0.5px solid var(--border-hair)',
+            background: 'transparent',
           }}
         >
-          {monogram(person.name)}
+          <span
+            style={{
+              fontFamily: 'var(--font-fraunces)',
+              fontSize: 22,
+              fontWeight: 500,
+              color: 'var(--ink-primary)',
+            }}
+          >
+            {monogram(person.name)}
+          </span>
         </div>
         <div className="flex-1">
           <h1
@@ -486,9 +513,10 @@ export default function PersonProfile({
         <TrajectoryCard
           state={state}
           trajectory={trajectory}
-          annotation={annotation}
-          history={history}
           rank={rank}
+          entries={list}
+          cadence={cadence}
+          impacts={impacts}
         />
         {trajectory && trajectory.trendLong < -0.5 && (
           <p
@@ -861,12 +889,9 @@ function Topbar() {
       >
         <i className="ti ti-arrow-left" style={{ fontSize: 18 }} />
       </button>
-      <span
-        className="text-[15px] italic text-ink-primary"
-        style={{ fontFamily: 'var(--font-fraunces)' }}
-      >
-        folks
-      </span>
+      {/* Empty centre + right spacer; back arrow stays anchored left without
+          a title competing for attention. */}
+      <span aria-hidden="true" />
       <span aria-hidden="true" style={{ width: 18 }} />
     </header>
   );
@@ -875,21 +900,26 @@ function Topbar() {
 function TrajectoryCard({
   state,
   trajectory,
-  annotation,
-  history,
   rank,
+  entries,
+  cadence,
+  impacts,
 }: {
   state: ClosenessState;
   trajectory: ReturnType<typeof trajectoryFor> | null;
-  annotation: string;
-  history: number[];
   rank: number;
+  entries: Entry[];
+  cadence: ReturnType<typeof cadenceFor>;
+  impacts: Map<string, number>;
 }) {
   if (state.status === 'forming') {
     return (
       <div
-        className="rounded-md px-4 py-4"
-        style={{ border: '0.5px solid var(--border-hair)' }}
+        className="rounded-md"
+        style={{
+          border: '0.5px solid var(--border-hair)',
+          padding: 18,
+        }}
       >
         <div
           className="text-[10px] uppercase tracking-widest text-ink-tertiary"
@@ -909,61 +939,217 @@ function TrajectoryCard({
     );
   }
 
-  const { trendShort } = trajectory!;
-  const direction: 'up' | 'down' | 'flat' =
-    trendShort > 0.15 ? 'up' : trendShort < -0.15 ? 'down' : 'flat';
-  const arrowIcon =
-    direction === 'up'
-      ? 'ti-arrow-up-right'
-      : direction === 'down'
-      ? 'ti-arrow-down-right'
-      : 'ti-minus';
-  const arrowColor =
-    direction === 'up'
-      ? 'var(--trend-up)'
-      : direction === 'down'
-      ? 'var(--trend-down)'
-      : 'var(--ink-tertiary)';
+  const score = trajectory!.now.display;
+  const delta = trajectory!.trendShort;
+
+  // Cumulative closeness at each entry: walk entries chronologically and
+  // accumulate the per-entry impact. By construction this sums to the
+  // current closeness (entryImpacts is computed exactly that way), so the
+  // chart's last y value matches the chip's score.
+  const ascending = [...entries].sort((a, b) => a.createdAt - b.createdAt);
+  const ys: number[] = [];
+  let cum = 0;
+  for (const e of ascending) {
+    cum += impacts.get(e.id) ?? 0;
+    ys.push(cum);
+  }
 
   return (
     <div
-      className="rounded-md px-4 py-4"
-      style={{ border: '0.5px solid var(--border-hair)' }}
+      className="rounded-md"
+      style={{
+        border: '0.5px solid var(--border-hair)',
+        padding: 18,
+      }}
     >
-      <div className="flex items-baseline justify-between">
-        <span
-          className="text-[22px] text-ink-primary"
-          style={{ fontFamily: 'var(--font-fraunces)' }}
-        >
-          #{rank > 0 ? rank : '—'}{' '}
-          <span className="text-[12px] italic text-ink-tertiary">in your circle</span>
-        </span>
-        <span
-          className="flex items-center gap-1 text-[14px] font-medium"
-          style={{ fontFamily: 'var(--font-mono)', color: arrowColor }}
-        >
-          <i className={`ti ${arrowIcon}`} style={{ fontSize: 15 }} />
-          {trajectory!.now.display.toFixed(1)}
-        </span>
-      </div>
-
-      {annotation && (
-        <div
-          className="mt-1 flex items-center gap-1.5 text-[12px] italic text-ink-secondary"
-          style={{ fontFamily: 'var(--font-fraunces)' }}
-        >
-          <i
-            className={`ti ${arrowIcon}`}
-            style={{ fontSize: 12, color: arrowColor }}
-          />
-          {annotation}
+      {/* Header row — rank left, score chip + delta right */}
+      {rank > 0 && (
+        <div className="flex items-baseline justify-between gap-3">
+          <div>
+            <span
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 24,
+                fontWeight: 500,
+                color: 'var(--ink-primary)',
+              }}
+            >
+              #{rank}
+            </span>
+            <span
+              style={{
+                marginLeft: 6,
+                fontFamily: 'var(--font-fraunces)',
+                fontSize: 14,
+                fontStyle: 'italic',
+                color: 'var(--ink-secondary)',
+              }}
+            >
+              in your circle
+            </span>
+          </div>
+          <div style={{ textAlign: 'center', flexShrink: 0 }}>
+            <span
+              style={{
+                display: 'inline-block',
+                border: '0.5px solid var(--border-hair)',
+                borderRadius: 6,
+                padding: '4px 10px',
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: 'var(--font-fraunces)',
+                  fontSize: 22,
+                  fontWeight: 500,
+                  color: 'var(--ink-primary)',
+                }}
+              >
+                {score.toFixed(1)}
+              </span>
+            </span>
+            <div
+              style={{
+                marginTop: 6,
+                fontFamily: 'var(--font-mono)',
+                fontSize: 12,
+                fontWeight: 500,
+                color: chevronColor(delta),
+              }}
+            >
+              {deltaText(delta)}
+            </div>
+          </div>
         </div>
       )}
 
-      <div className="mt-3">
-        <Sparkline history={history} direction={direction} width={280} height={32} />
+      {/* Cadence line */}
+      {cadence.lastInteraction !== null &&
+        cadence.avgIntervalDays !== null && (
+          <div
+            style={{
+              marginTop: 14,
+              fontFamily: 'var(--font-fraunces)',
+              fontSize: 13,
+              fontStyle: 'italic',
+              color: 'var(--ink-secondary)',
+            }}
+          >
+            last interaction: {cadenceLastLabel(cadence.lastInteraction)} ·
+            typically {formatInterval(cadence.avgIntervalDays)}
+          </div>
+        )}
+
+      {/* Trajectory chart */}
+      <div style={{ marginTop: 18 }}>
+        {ys.length === 0 ? (
+          <p
+            style={{
+              fontFamily: 'var(--font-fraunces)',
+              fontSize: 14,
+              fontStyle: 'italic',
+              color: 'var(--ink-tertiary)',
+              textAlign: 'center',
+              padding: '30px 0',
+              margin: 0,
+            }}
+          >
+            no entries yet.
+          </p>
+        ) : (
+          <TrajectoryChart ys={ys} />
+        )}
       </div>
+
+      {/* Chart footer */}
+      {ys.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            display: 'flex',
+            justifyContent: 'space-between',
+            fontFamily: 'var(--font-mono)',
+            fontSize: 11,
+          }}
+        >
+          <span style={{ color: 'var(--ink-secondary)' }}>
+            first → most recent
+          </span>
+          <span style={{ color: 'var(--ink-primary)' }}>
+            {ys[0]!.toFixed(1)} → {ys[ys.length - 1]!.toFixed(1)}
+          </span>
+        </div>
+      )}
     </div>
+  );
+}
+
+function TrajectoryChart({ ys }: { ys: number[] }) {
+  const W = 320;
+  const H = 90;
+  const PAD_X = 4;
+  const PAD_Y = 8;
+
+  // Single entry: just a centered dot, no line.
+  if (ys.length === 1) {
+    return (
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        preserveAspectRatio="xMidYMid meet"
+        aria-hidden="true"
+      >
+        <circle cx={W / 2} cy={H / 2} r={2.5} fill="var(--accent-sage)" />
+      </svg>
+    );
+  }
+
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  // Auto-fit y range with 10% padding. Enforce a minimum range so a tiny
+  // wobble on a sparse profile doesn't look like a cliff.
+  let yRange = Math.max(maxY - minY, 2.0);
+  const yPad = yRange * 0.1;
+  const yLow = minY - yPad;
+  const yHigh = maxY + yPad + (yRange - (maxY - minY));
+  const yScale = (y: number) =>
+    H - PAD_Y - ((y - yLow) / (yHigh - yLow)) * (H - PAD_Y * 2);
+
+  const points = ys.map((y, i) => ({
+    x: PAD_X + (i / (ys.length - 1)) * (W - PAD_X * 2),
+    y: yScale(y),
+  }));
+  const polyline = points
+    .map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`)
+    .join(' ');
+  const showDots = ys.length <= 25;
+
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      width="100%"
+      preserveAspectRatio="xMidYMid meet"
+      aria-hidden="true"
+    >
+      <polyline
+        points={polyline}
+        fill="none"
+        stroke="var(--accent-sage)"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {showDots &&
+        points.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r={2.5}
+            fill="var(--accent-sage)"
+          />
+        ))}
+    </svg>
   );
 }
 
