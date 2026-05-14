@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
@@ -117,6 +117,7 @@ export default function JournalPage() {
 
 function JournalContent() {
   const [seeding, setSeeding] = useState(false);
+  const [query, setQuery] = useState('');
 
   async function handleSeed() {
     setSeeding(true);
@@ -151,6 +152,18 @@ function JournalContent() {
     []
   );
 
+  // Search: case-insensitive substring on entry text OR attributed person name.
+  const filteredEntries = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return entries;
+    return entries.filter((e) => {
+      if (e.text.toLowerCase().includes(q)) return true;
+      const person = e.personId ? peopleById.get(e.personId) : null;
+      if (person && person.name.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [entries, peopleById, query]);
+
   return (
     <main className="mx-auto h-[100svh] w-full max-w-md overflow-y-auto px-4 pb-12 pt-6">
       <header className="flex items-center justify-between">
@@ -170,13 +183,45 @@ function JournalContent() {
         <span aria-hidden="true" style={{ width: 18 }} />
       </header>
 
-      <div className="mt-10">
+      {/* Search bar */}
+      {entries.length > 0 && (
+        <div className="relative mt-6">
+          <i
+            className="ti ti-search pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-tertiary"
+            style={{ fontSize: 13 }}
+            aria-hidden="true"
+          />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="search entries…"
+            className="w-full rounded-full bg-white/40 py-2 pl-9 pr-9 text-[13px] italic text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
+            style={{
+              fontFamily: 'var(--font-fraunces)',
+              border: '0.5px solid var(--border-hair)',
+            }}
+          />
+          {query && (
+            <button
+              onClick={() => setQuery('')}
+              aria-label="Clear search"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-tertiary transition-colors hover:text-ink-primary"
+            >
+              <i className="ti ti-x" style={{ fontSize: 13 }} />
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="mt-8">
         <div className="mb-2 flex items-center gap-3">
           <span
             className="text-[10px] uppercase tracking-widest text-ink-secondary"
             style={{ fontFamily: 'var(--font-mono)' }}
           >
-            all entries
+            {query.trim()
+              ? `${filteredEntries.length} ${filteredEntries.length === 1 ? 'match' : 'matches'}`
+              : 'all entries'}
           </span>
           <div className="h-px flex-1" style={{ background: 'var(--border-hair)' }} />
         </div>
@@ -198,8 +243,17 @@ function JournalContent() {
               {seeding ? 'loading…' : 'load test data →'}
             </button>
           </div>
+        ) : filteredEntries.length === 0 ? (
+          <div className="py-12 text-center">
+            <p
+              className="text-[13px] italic text-ink-tertiary"
+              style={{ fontFamily: 'var(--font-fraunces)' }}
+            >
+              no entries match "{query.trim()}"
+            </p>
+          </div>
         ) : (
-          groupByDay(entries).map((group) => (
+          groupByDay(filteredEntries).map((group) => (
             <div key={group.key} className="mt-8 first:mt-0">
               {/* Date header */}
               <h2
@@ -220,6 +274,7 @@ function JournalContent() {
                     entry.personId ? peopleById.get(entry.personId) : undefined
                   }
                   allPeople={allPeople}
+                  query={query}
                 />
               ))}
             </div>
@@ -230,14 +285,39 @@ function JournalContent() {
   );
 }
 
+function highlightMatch(text: string, query: string): React.ReactNode {
+  const q = query.trim();
+  if (!q) return text;
+  const lower = text.toLowerCase();
+  const qLower = q.toLowerCase();
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  let idx = lower.indexOf(qLower);
+  let key = 0;
+  while (idx !== -1) {
+    if (idx > last) out.push(text.slice(last, idx));
+    out.push(
+      <span key={key++} className="folks-name-highlight">
+        {text.slice(idx, idx + q.length)}
+      </span>
+    );
+    last = idx + q.length;
+    idx = lower.indexOf(qLower, last);
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return <>{out}</>;
+}
+
 function JournalRow({
   entry,
   person,
   allPeople,
+  query,
 }: {
   entry: Entry;
   person: Person | undefined;
   allPeople: Person[];
+  query: string;
 }) {
   const [mode, setMode] = useState<'rest' | 'edit' | 'confirm-delete'>('rest');
   const [draft, setDraft] = useState(entry.text);
@@ -484,7 +564,7 @@ function JournalRow({
             className="mt-1 text-[13px] italic leading-snug text-ink-secondary"
             style={{ fontFamily: 'var(--font-fraunces)' }}
           >
-            "{entry.text}"
+            "{highlightMatch(entry.text, query)}"
           </p>
         )}
 
