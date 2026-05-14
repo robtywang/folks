@@ -125,9 +125,11 @@ export async function updateEntrySentiment(
 }
 
 /**
- * Edit the text of an existing entry. Doesn't re-run the AI — just persists
- * the new text. (Re-running would change attribution / sentiment, which would
- * surprise the user.)
+ * Edit the text of an existing entry. Re-runs Claude on the new text so
+ * sentiment + tags refresh, then recomputes closeness so the rating reflects
+ * the edited content. Person attribution is intentionally preserved — a text
+ * edit should never reassign the entry to a different person without the
+ * user explicitly choosing so.
  */
 export async function updateEntryText(
   entryId: string,
@@ -135,11 +137,33 @@ export async function updateEntryText(
 ): Promise<void> {
   const trimmed = text.trim();
   if (!trimmed) throw new Error('Entry text is empty');
+  const entry = await db.entries.get(entryId);
+  if (!entry) throw new Error('Entry not found');
+
+  // Re-parse to refresh sentiment + tags from the new text. If parse fails
+  // (no API key, network blip), fall back to keeping the existing values so
+  // the edit still saves.
+  let nextSentiment = entry.sentiment;
+  let nextTags = entry.tags;
+  try {
+    const { parsed } = await parseEntry(trimmed);
+    nextSentiment = parsed.sentiment;
+    nextTags = parsed.tags;
+  } catch (err) {
+    console.warn('Re-parse on text edit failed; keeping old values:', err);
+  }
+
   await db.entries.update(entryId, {
     text: trimmed,
+    sentiment: nextSentiment,
+    tags: nextTags,
     updatedAt: Date.now(),
     userConfirmed: true,
   });
+
+  if (entry.personId) {
+    await recomputePerson(entry.personId);
+  }
 }
 
 /**
