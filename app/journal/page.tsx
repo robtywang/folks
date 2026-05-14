@@ -9,7 +9,6 @@ import {
   deleteEntry,
   updateEntryAttribution,
 } from '@/lib/save-entry';
-import { seedTestData } from '@/lib/seed';
 import { hasLockPin, isUnlocked } from '@/lib/lock';
 import { LockScreen } from '@/components/lock-screen';
 import type { Entry, Person } from '@/types';
@@ -230,17 +229,7 @@ export default function JournalPage() {
 }
 
 function JournalContent() {
-  const [seeding, setSeeding] = useState(false);
   const [query, setQuery] = useState('');
-
-  async function handleSeed() {
-    setSeeding(true);
-    try {
-      await seedTestData();
-    } finally {
-      setSeeding(false);
-    }
-  }
 
   const entries = useLiveQuery(
     async () => db.entries.orderBy('createdAt').reverse().toArray(),
@@ -349,20 +338,12 @@ function JournalContent() {
 
           {entries.length === 0 ? (
             <div className="py-12 text-center">
-              <div
+              <p
                 className="text-[13px] italic text-ink-tertiary"
                 style={{ fontFamily: 'var(--font-fraunces)' }}
               >
                 no entries yet
-              </div>
-              <button
-                onClick={handleSeed}
-                disabled={seeding}
-                className="mt-5 text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
-                style={{ fontFamily: 'var(--font-mono)' }}
-              >
-                {seeding ? 'loading…' : 'load test data →'}
-              </button>
+              </p>
             </div>
           ) : filteredEntries.length === 0 ? (
             <div className="py-12 text-center">
@@ -669,9 +650,9 @@ function JournalEntry({
           style={{
             marginTop: 6,
             fontFamily: 'var(--font-fraunces)',
-            fontSize: 17,
+            fontSize: 14,
             fontStyle: 'italic',
-            lineHeight: 1.45,
+            lineHeight: 1.5,
             color: 'var(--ink-primary)',
           }}
         >
