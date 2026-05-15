@@ -14,6 +14,7 @@
     "@vercel/analytics": "^2.0.1",
     "dexie": "^4.0.10",
     "dexie-react-hooks": "^1.1.7",
+    "framer-motion": "^12.38.0",
     "next": "^15.5.18",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

@@ -90,6 +90,38 @@ export interface Person {
   isTransient: boolean;           // true if only one mention so far
 }
 
+/**
+ * Sunday-morning AI-generated digest of the user's last 7 days of entries.
+ * One per week per user, persisted locally. Renders as a dismissable card on
+ * the home screen until acknowledged.
+ */
+export interface WeeklyRecap {
+  id: string;
+  createdAt: number;
+  /** Unix ms for the Sunday 00:00 local that this recap covers. */
+  weekStart: number;
+  /** Full recap text — opening, 2-3 per-friend observations, closing line. */
+  content: string;
+  status: 'active' | 'dismissed';
+}
+
+/**
+ * Per-friend AI-generated question. Rendered on the profile and (sparsely) on
+ * home. Tapping opens compose with the question shown as context. Driven by
+ * the same statistical pre-filter that powers /api/insights.
+ */
+export interface FriendPrompt {
+  id: string;
+  personId: string;
+  createdAt: number;
+  text: string;
+  /** Which detected pattern kind seeded the question (debug + analytics). */
+  sourcePattern: string;
+  status: 'active' | 'answered' | 'dismissed' | 'expired';
+  /** Set when an entry is logged via this prompt. */
+  answeredByEntryId?: string;
+}
+
 export interface ParseResponse {
   primary_person: string | null;
   is_new_person: boolean;

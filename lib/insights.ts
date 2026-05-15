@@ -1,7 +1,5 @@
-import type { Entry, Person } from '@/types';
-import { db } from './db';
+import type { Entry } from '@/types';
 
-const WEEKDAY = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 const DAY_MS = 86_400_000;
 
 /** Quantitative pattern detected locally, ready to be phrased by Claude. */
@@ -22,10 +20,6 @@ export interface DetectedPattern {
   delta?: number;
 }
 
-export interface InsightsResult {
-  insights: string[];
-}
-
 const MIN_COHORT = 3;
 const MIN_SENTIMENT_DELTA = 1.2;
 
@@ -35,7 +29,7 @@ const MIN_SENTIMENT_DELTA = 1.2;
  * we hand it. This eliminates the model's main failure mode (inventing
  * patterns that sound right but aren't in the data).
  */
-function detectPatterns(entries: Entry[]): DetectedPattern[] {
+export function detectPatterns(entries: Entry[]): DetectedPattern[] {
   const patterns: DetectedPattern[] = [];
   if (entries.length < MIN_COHORT) return patterns;
 
@@ -165,79 +159,3 @@ function detectPatterns(entries: Entry[]): DetectedPattern[] {
   return patterns;
 }
 
-/**
- * Ask Claude to phrase pre-detected statistical patterns. Returns null when
- * there's not enough data, no signal, or the API isn't configured.
- */
-export async function generateInsights(
-  person: Person,
-  entries: Entry[]
-): Promise<InsightsResult | null> {
-  if (entries.length < 3) return null;
-
-  const patterns = detectPatterns(entries);
-  if (patterns.length === 0) {
-    // No statistically meaningful patterns yet. Better to say nothing than
-    // invent something. The profile shows "no patterns yet" state.
-    return { insights: [] };
-  }
-
-  const payload = {
-    person: {
-      name: person.name,
-      entryCount: person.entryCount,
-      avgSentiment: person.avgSentiment,
-      userContext: person.userContext ?? null,
-    },
-    // Patterns ready to phrase — Claude renders, doesn't find.
-    patterns: patterns.map((p) => ({
-      fact: p.fact,
-      support: p.support,
-      delta: p.delta,
-    })),
-    // A small entry sample for tonal context only — not used for finding
-    // patterns. Capped to the most recent 8 to keep prompt cost low.
-    entrySample: entries
-      .slice(0, 8)
-      .map((e) => {
-        const d = new Date(e.createdAt);
-        return {
-          text: e.text,
-          sentiment: e.sentiment,
-          tags: e.tags,
-          daysAgo: Math.max(0, Math.floor((Date.now() - e.createdAt) / DAY_MS)),
-          weekday: WEEKDAY[d.getDay()],
-        };
-      }),
-  };
-
-  const res = await fetch('/api/insights', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    if (res.status === 503 || res.status === 400) return null;
-    throw new Error(`insights api ${res.status}`);
-  }
-
-  const data: { insights?: unknown } = await res.json();
-  if (!data.insights || !Array.isArray(data.insights)) return null;
-
-  const insights = data.insights
-    .filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
-    .slice(0, 3);
-
-  return { insights };
-}
-
-export async function saveInsights(
-  personId: string,
-  result: InsightsResult
-): Promise<void> {
-  await db.people.update(personId, {
-    insightCards: result.insights,
-    insightsUpdatedAt: Date.now(),
-  });
-}

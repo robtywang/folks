@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { db, getMeta, setMeta } from '@/lib/db';
 import { seedTestData } from '@/lib/seed';
+import { generateWeeklyRecap, saveWeeklyRecap } from '@/lib/weekly-recap';
+import { maybeRefreshPrompts } from '@/lib/prompts';
 import {
   hasLockPin,
   setLockPin,
@@ -50,7 +52,7 @@ const PASSCODE_FLOWS = {
 } as const;
 type PasscodeFlow = (typeof PASSCODE_FLOWS)[keyof typeof PASSCODE_FLOWS];
 
-type Busy = 'export' | 'delete' | 'seed' | 'pin' | null;
+type Busy = 'export' | 'delete' | 'seed' | 'pin' | 'recap' | 'prompts' | null;
 
 const USER_NAME_KEY = 'folks_user_name';
 const USER_ABOUT_KEY = 'folks_user_about';
@@ -59,6 +61,8 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState<Busy>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [seedResult, setSeedResult] = useState<string | null>(null);
+  const [recapResult, setRecapResult] = useState<string | null>(null);
+  const [promptsResult, setPromptsResult] = useState<string | null>(null);
 
   // "you" section state — auto-saves on every change.
   const [name, setName] = useState('');
@@ -224,6 +228,48 @@ export default function SettingsPage() {
       await db.people.clear();
       setConfirmDelete(false);
       setSeedResult(null);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleGenerateRecap() {
+    setBusy('recap');
+    setRecapResult(null);
+    try {
+      const gen = await generateWeeklyRecap({ force: true });
+      if (!gen) {
+        setRecapResult('skipped — need ≥3 entries in past 7 days');
+        return;
+      }
+      await saveWeeklyRecap(gen.weekStart, gen.content);
+      setRecapResult('done — check home');
+    } catch (err) {
+      console.error('Recap failed:', err);
+      setRecapResult('failed — see console');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleRefreshPrompts() {
+    setBusy('prompts');
+    setPromptsResult(null);
+    try {
+      const people = await db.people
+        .filter((p) => !p.muted && p.entryCount >= 3)
+        .toArray();
+      let refreshed = 0;
+      for (const p of people) {
+        const r = await maybeRefreshPrompts(p.id, 'manual');
+        if (r.refreshed) refreshed += 1;
+      }
+      setPromptsResult(
+        `refreshed ${refreshed} of ${people.length} stable folks`
+      );
+    } catch (err) {
+      console.error('Refresh prompts failed:', err);
+      setPromptsResult('failed — see console');
     } finally {
       setBusy(null);
     }
@@ -784,6 +830,54 @@ export default function SettingsPage() {
                   style={{ fontFamily: 'var(--font-mono)' }}
                 >
                   {busy === 'seed' ? 'loading…' : 'load'}
+                </button>
+              </div>
+            }
+          />
+          <Row
+            label="generate weekly recap now"
+            description="bypasses the sunday-only gate. forces a fresh opus 4.7 recap and pins it to home."
+            action={
+              <div className="flex items-center gap-3">
+                {recapResult && (
+                  <span
+                    className="text-[10px] uppercase tracking-widest text-accent-sage"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    ✓ {recapResult}
+                  </span>
+                )}
+                <button
+                  onClick={handleGenerateRecap}
+                  disabled={busy !== null}
+                  className="text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
+                  {busy === 'recap' ? 'generating…' : 'generate'}
+                </button>
+              </div>
+            }
+          />
+          <Row
+            label="refresh prompts for all folks"
+            description="re-runs the question generator for every stable folk. skips muted and forming."
+            action={
+              <div className="flex items-center gap-3">
+                {promptsResult && (
+                  <span
+                    className="text-[10px] uppercase tracking-widest text-accent-sage"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    ✓ {promptsResult}
+                  </span>
+                )}
+                <button
+                  onClick={handleRefreshPrompts}
+                  disabled={busy !== null}
+                  className="text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
+                  style={{ fontFamily: 'var(--font-mono)' }}
+                >
+                  {busy === 'prompts' ? 'refreshing…' : 'refresh'}
                 </button>
               </div>
             }

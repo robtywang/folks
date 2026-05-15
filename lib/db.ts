@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import type { Entry, Person } from '@/types';
+import type { Entry, Person, WeeklyRecap, FriendPrompt } from '@/types';
 
 interface MetaRow {
   key: string;
@@ -10,6 +10,8 @@ class CircleDB extends Dexie {
   entries!: Table<Entry, string>;
   people!: Table<Person, string>;
   meta!: Table<MetaRow, string>;
+  weeklyRecaps!: Table<WeeklyRecap, string>;
+  friendPrompts!: Table<FriendPrompt, string>;
 
   constructor() {
     super('circle');
@@ -17,12 +19,20 @@ class CircleDB extends Dexie {
       entries: 'id, createdAt, personId, sentiment',
       people: 'id, name, closenessScore, lastInteraction, isTransient',
     });
-    // v2: add a key-value meta table for app-level flags
-    // (e.g. hasSeenPasscodeWarning).
+    // v2: meta kv table for app-level flags (hasSeenPasscodeWarning, etc.)
     this.version(2).stores({
       entries: 'id, createdAt, personId, sentiment',
       people: 'id, name, closenessScore, lastInteraction, isTransient',
       meta: 'key',
+    });
+    // v3: weekly recaps + per-friend prompted questions. Both additive —
+    // existing entries/people/meta are untouched.
+    this.version(3).stores({
+      entries: 'id, createdAt, personId, sentiment',
+      people: 'id, name, closenessScore, lastInteraction, isTransient',
+      meta: 'key',
+      weeklyRecaps: 'id, createdAt, weekStart, status',
+      friendPrompts: 'id, personId, createdAt, status',
     });
   }
 }

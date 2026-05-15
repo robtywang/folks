@@ -5,17 +5,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
-import {
-  cadenceFor,
-  closenessState,
-  entryImpacts,
-  sentimentHistory,
-  trajectoryFor,
-  type ClosenessState,
-} from '@/lib/closeness';
-import { SentimentTrend } from '@/components/sentiment-trend';
+import { cadenceFor } from '@/lib/closeness';
 import { generateReading, saveReading, updatePersonContext } from '@/lib/reading';
-import { generateInsights, saveInsights } from '@/lib/insights';
+import {
+  maybeRefreshPrompts,
+  dismissPrompt,
+} from '@/lib/prompts';
 import { removePerson, mergePerson } from '@/lib/save-entry';
 import { hasLockPin, isUnlocked } from '@/lib/lock';
 import { LockScreen } from '@/components/lock-screen';
@@ -26,33 +21,6 @@ function monogram(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0][0]!.toUpperCase();
   return (parts[0][0]! + parts[parts.length - 1]![0]!).toUpperCase();
-}
-
-// Profile-page-local helpers for the redesigned trajectory card.
-// Matches the chevron treatment used on /ratings exactly: ±0.4 flat threshold,
-// bright sage / coral / ink-tertiary colour ramp, U+2212 minus, em-dash for flat.
-const DELTA_FLAT = 0.4;
-function chevronClass(delta: number): string {
-  if (delta > DELTA_FLAT) return 'ti ti-chevron-up';
-  if (delta < -DELTA_FLAT) return 'ti ti-chevron-down';
-  return 'ti ti-minus';
-}
-function chevronColor(delta: number): string {
-  if (delta > DELTA_FLAT) return 'var(--accent-sage)';
-  if (delta < -DELTA_FLAT) return 'var(--accent-coral)';
-  return 'var(--ink-tertiary)';
-}
-function deltaText(delta: number): string {
-  if (delta > DELTA_FLAT) return `+${delta.toFixed(1)}`;
-  if (delta < -DELTA_FLAT) return `−${Math.abs(delta).toFixed(1)}`;
-  return '—';
-}
-
-function cadenceLastLabel(lastInteraction: number): string {
-  const days = Math.floor((Date.now() - lastInteraction) / 86_400_000);
-  if (days === 0) return 'today';
-  if (days === 1) return 'yesterday';
-  return `${days} days ago`;
 }
 
 function relativeDate(timestamp: number): string {
@@ -102,9 +70,8 @@ export default function PersonProfile({
 
   // Reading state
   const [readingBusy, setReadingBusy] = useState(false);
-  const [insightsBusy, setInsightsBusy] = useState(false);
-  const [insightsError, setInsightsError] = useState<string | null>(null);
   const [readingError, setReadingError] = useState<string | null>(null);
+  const [promptsBusy, setPromptsBusy] = useState(false);
   const [recalibrating, setRecalibrating] = useState(false);
   const [editingContext, setEditingContext] = useState(false);
   const [contextDraft, setContextDraft] = useState('');
@@ -140,6 +107,21 @@ export default function PersonProfile({
       return arr.sort((a, b) => b.lastInteraction - a.lastInteraction);
     },
     [],
+    []
+  );
+  // Active prompts for this person (newest first, capped at 5).
+  const prompts = useLiveQuery(
+    async () => {
+      const all = await db.friendPrompts
+        .where('personId')
+        .equals(id)
+        .toArray();
+      return all
+        .filter((p) => p.status === 'active')
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 5);
+    },
+    [id],
     []
   );
 
@@ -190,17 +172,14 @@ export default function PersonProfile({
     }
   }
 
-  async function handleGenerateInsights() {
-    if (!person || !entries) return;
-    setInsightsBusy(true);
-    setInsightsError(null);
+  async function handleRefreshPrompts() {
+    setPromptsBusy(true);
     try {
-      const r = await generateInsights(person, entries);
-      if (r) await saveInsights(person.id, r);
+      await maybeRefreshPrompts(id, 'manual');
     } catch (err) {
-      setInsightsError(err instanceof Error ? err.message : 'failed');
+      console.warn('refresh prompts failed:', err);
     } finally {
-      setInsightsBusy(false);
+      setPromptsBusy(false);
     }
   }
 
@@ -208,7 +187,7 @@ export default function PersonProfile({
     setRemoving(true);
     try {
       await removePerson(id);
-      router.push('/ratings');
+      router.push('/');
     } catch (err) {
       console.error('Remove failed:', err);
     } finally {
@@ -261,12 +240,7 @@ export default function PersonProfile({
   }
 
   const list = entries ?? [];
-  const state = closenessState(list);
-  const trajectory = state.status === 'stable' ? trajectoryFor(list) : null;
-  const sentimentTrend = sentimentHistory(list, 12); // 12-week sentiment chart
   const cadence = cadenceFor(list);
-  const impacts = entryImpacts(list); // entry.id → closeness delta from that entry
-  const rank = ranked.findIndex((p) => p.id === id) + 1; // 1-indexed; 0 if not found
 
   return (
     <main className="mx-auto flex h-[100svh] w-full max-w-md flex-col overflow-hidden px-4 pt-6">
@@ -499,149 +473,64 @@ export default function PersonProfile({
         </div>
       </div>
 
-      {/* Trajectory card — hinge between qualitative (Reading) and raw (Entries) */}
-      <div className="mt-10">
-        <div className="mb-2 flex items-center gap-3">
-          <span
-            className="text-[10px] uppercase tracking-widest text-ink-secondary"
-            style={{ fontFamily: 'var(--font-mono)' }}
-          >
-            trajectory
-          </span>
-          <div className="h-px flex-1" style={{ background: 'var(--border-hair)' }} />
-        </div>
-        <TrajectoryCard
-          state={state}
-          trajectory={trajectory}
-          rank={rank}
-          entries={list}
-          cadence={cadence}
-          impacts={impacts}
-        />
-        {trajectory && trajectory.trendLong < -0.5 && (
-          <p
-            className="mt-2 px-1 text-[11px] italic leading-snug text-ink-tertiary"
-            style={{ fontFamily: 'var(--font-fraunces)' }}
-          >
-            trending down over the past month.
-          </p>
-        )}
-      </div>
 
-      {/* Analytics — sentiment trend + AI insight cards.
-          Gated at 3 entries: below that, charts are noise and insights would
-          hallucinate. We show a soft locked state instead so the user sees
-          progress toward unlocking. */}
-      {list.length > 0 && (
+      {/* Prompted questions — surfaced from detected patterns. Tapping a
+          question opens compose with the question above the input as context;
+          the saved entry then links back to the prompt and marks it answered. */}
+      {list.length >= 3 && (
         <div className="mt-10">
-          <div className="mb-2 flex items-center gap-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
             <span
               className="text-[10px] uppercase tracking-widest text-ink-secondary"
               style={{ fontFamily: 'var(--font-mono)' }}
             >
-              analytics
+              questions for you
             </span>
             <div className="h-px flex-1" style={{ background: 'var(--border-hair)' }} />
-          </div>
-
-          {list.length < 3 ? (
-            <div
-              className="rounded-md px-3 py-3"
-              style={{
-                background: 'rgba(140, 126, 92, 0.06)',
-                border: '0.5px solid var(--border-hair)',
-              }}
+            <button
+              onClick={handleRefreshPrompts}
+              disabled={promptsBusy}
+              className="text-[10px] uppercase tracking-widest text-accent-coral disabled:opacity-40"
+              style={{ fontFamily: 'var(--font-mono)' }}
             >
-              <p
-                className="text-[13px] italic leading-snug text-ink-primary"
-                style={{ fontFamily: 'var(--font-fraunces)' }}
-              >
-                analytics unlock at 3 entries.
-              </p>
-              <p
-                className="mt-1 text-[11px] italic leading-snug text-ink-tertiary"
-                style={{ fontFamily: 'var(--font-fraunces)' }}
-              >
-                {3 - list.length === 1
-                  ? 'one more entry about ' + person.name.toLowerCase() + ' to see patterns appear.'
-                  : `${3 - list.length} more entries about ${person.name.toLowerCase()} to see patterns appear.`}
-              </p>
-            </div>
+              {promptsBusy ? 'thinking…' : (prompts?.length ?? 0) > 0 ? 'refresh ↻' : 'generate →'}
+            </button>
+          </div>
+          {(prompts?.length ?? 0) === 0 ? (
+            <p
+              className="text-[12px] italic text-ink-tertiary"
+              style={{ fontFamily: 'var(--font-fraunces)' }}
+            >
+              no questions yet — log a few more entries or tap generate.
+            </p>
           ) : (
-            <>
-              <SentimentTrend
-                buckets={sentimentTrend.buckets}
-                lifetimeAvg={sentimentTrend.lifetimeAvg}
-                recentAvg={sentimentTrend.recentAvg}
-                delta={sentimentTrend.delta}
-              />
-
-              {/* AI insight cards */}
-              <div className="mt-6">
-                <div className="mb-2 flex items-center justify-between">
-                  <span
-                    className="text-[10px] uppercase tracking-widest text-ink-tertiary"
-                    style={{ fontFamily: 'var(--font-mono)' }}
+            <ul className="space-y-2">
+              {(prompts ?? []).map((p) => (
+                <li
+                  key={p.id}
+                  className="relative rounded-md py-2 pl-3 pr-8 text-[13px] italic leading-snug text-ink-primary"
+                  style={{
+                    fontFamily: 'var(--font-fraunces)',
+                    background: 'rgba(140, 126, 92, 0.06)',
+                    borderLeft: '2px solid var(--accent-coral)',
+                  }}
+                >
+                  <Link
+                    href={`/?promptId=${p.id}`}
+                    className="block transition-opacity hover:opacity-70"
                   >
-                    patterns
-                  </span>
-                  {(person.insightCards?.length ?? 0) > 0 && (
-                    <button
-                      onClick={handleGenerateInsights}
-                      disabled={insightsBusy}
-                      className="text-[10px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
-                      style={{ fontFamily: 'var(--font-mono)' }}
-                    >
-                      {insightsBusy ? 'thinking…' : 'rerun ↻'}
-                    </button>
-                  )}
-                </div>
-
-                {person.insightCards && person.insightCards.length > 0 ? (
-                  <ul className="space-y-2">
-                    {person.insightCards.map((insight, i) => (
-                      <li
-                        key={i}
-                        className="rounded-md px-3 py-2 text-[13px] italic leading-snug text-ink-primary"
-                        style={{
-                          fontFamily: 'var(--font-fraunces)',
-                          background: 'rgba(140, 126, 92, 0.06)',
-                          borderLeft: '2px solid var(--ink-tertiary)',
-                        }}
-                      >
-                        {insight}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <p
-                      className="text-[12px] italic text-ink-tertiary"
-                      style={{ fontFamily: 'var(--font-fraunces)' }}
-                    >
-                      surface patterns the ai sees in your entries.
-                    </p>
-                    <button
-                      onClick={handleGenerateInsights}
-                      disabled={insightsBusy}
-                      className="text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-50"
-                      style={{ fontFamily: 'var(--font-mono)' }}
-                    >
-                      {insightsBusy ? 'thinking…' : 'generate →'}
-                    </button>
-                  </div>
-                )}
-
-                {insightsError && (
-                  <p
-                    className="mt-2 text-[11px] italic text-accent-coral"
-                    style={{ fontFamily: 'var(--font-fraunces)' }}
+                    {p.text}
+                  </Link>
+                  <button
+                    onClick={() => dismissPrompt(p.id)}
+                    aria-label="Dismiss question"
+                    className="absolute right-2 top-2 text-ink-tertiary transition-colors hover:text-accent-coral"
                   >
-                    {insightsError}
-                  </p>
-                )}
-              </div>
-            </>
+                    <i className="ti ti-x" style={{ fontSize: 12 }} />
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
@@ -665,13 +554,7 @@ export default function PersonProfile({
             no entries yet
           </div>
         ) : (
-          list.map((entry) => (
-            <EntryRow
-              key={entry.id}
-              entry={entry}
-              impact={impacts.get(entry.id) ?? 0}
-            />
-          ))
+          list.map((entry) => <EntryRow key={entry.id} entry={entry} />)
         )}
       </div>
 
@@ -897,295 +780,17 @@ function Topbar() {
   );
 }
 
-function TrajectoryCard({
-  state,
-  trajectory,
-  rank,
-  entries,
-  cadence,
-  impacts,
-}: {
-  state: ClosenessState;
-  trajectory: ReturnType<typeof trajectoryFor> | null;
-  rank: number;
-  entries: Entry[];
-  cadence: ReturnType<typeof cadenceFor>;
-  impacts: Map<string, number>;
-}) {
-  if (state.status === 'forming') {
-    return (
-      <div
-        className="rounded-md"
-        style={{
-          border: '0.5px solid var(--border-hair)',
-          padding: 18,
-        }}
-      >
-        <div
-          className="text-[10px] uppercase tracking-widest text-ink-tertiary"
-          style={{ fontFamily: 'var(--font-mono)' }}
-        >
-          forming
-        </div>
-        <p
-          className="mt-1 text-[14px] italic leading-snug text-ink-secondary"
-          style={{ fontFamily: 'var(--font-fraunces)' }}
-        >
-          log {3 - state.entryCount} more{' '}
-          {3 - state.entryCount === 1 ? 'entry' : 'entries'} to see a closeness
-          reading.
-        </p>
-      </div>
-    );
-  }
-
-  const score = trajectory!.now.display;
-  const delta = trajectory!.trendShort;
-
-  // Cumulative closeness at each entry: walk entries chronologically and
-  // accumulate the per-entry impact. By construction this sums to the
-  // current closeness (entryImpacts is computed exactly that way), so the
-  // chart's last y value matches the chip's score.
-  const ascending = [...entries].sort((a, b) => a.createdAt - b.createdAt);
-  const ys: number[] = [];
-  let cum = 0;
-  for (const e of ascending) {
-    cum += impacts.get(e.id) ?? 0;
-    ys.push(cum);
-  }
-
-  return (
-    <div
-      className="rounded-md"
-      style={{
-        border: '0.5px solid var(--border-hair)',
-        padding: 18,
-      }}
-    >
-      {/* Header row — rank left, score chip + delta right */}
-      {rank > 0 && (
-        <div className="flex items-baseline justify-between gap-3">
-          <div>
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 24,
-                fontWeight: 500,
-                color: 'var(--ink-primary)',
-              }}
-            >
-              #{rank}
-            </span>
-            <span
-              style={{
-                marginLeft: 6,
-                fontFamily: 'var(--font-fraunces)',
-                fontSize: 14,
-                fontStyle: 'italic',
-                color: 'var(--ink-secondary)',
-              }}
-            >
-              in your circle
-            </span>
-          </div>
-          <div style={{ textAlign: 'center', flexShrink: 0 }}>
-            <span
-              style={{
-                display: 'inline-block',
-                border: '0.5px solid var(--border-hair)',
-                borderRadius: 6,
-                padding: '4px 10px',
-              }}
-            >
-              <span
-                style={{
-                  fontFamily: 'var(--font-fraunces)',
-                  fontSize: 22,
-                  fontWeight: 500,
-                  color: 'var(--ink-primary)',
-                }}
-              >
-                {score.toFixed(1)}
-              </span>
-            </span>
-            <div
-              style={{
-                marginTop: 6,
-                fontFamily: 'var(--font-mono)',
-                fontSize: 12,
-                fontWeight: 500,
-                color: chevronColor(delta),
-              }}
-            >
-              {deltaText(delta)}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cadence line */}
-      {cadence.lastInteraction !== null &&
-        cadence.avgIntervalDays !== null && (
-          <div
-            style={{
-              marginTop: 14,
-              fontFamily: 'var(--font-fraunces)',
-              fontSize: 13,
-              fontStyle: 'italic',
-              color: 'var(--ink-secondary)',
-            }}
-          >
-            last interaction: {cadenceLastLabel(cadence.lastInteraction)} ·
-            typically {formatInterval(cadence.avgIntervalDays)}
-          </div>
-        )}
-
-      {/* Trajectory chart */}
-      <div style={{ marginTop: 18 }}>
-        {ys.length === 0 ? (
-          <p
-            style={{
-              fontFamily: 'var(--font-fraunces)',
-              fontSize: 14,
-              fontStyle: 'italic',
-              color: 'var(--ink-tertiary)',
-              textAlign: 'center',
-              padding: '30px 0',
-              margin: 0,
-            }}
-          >
-            no entries yet.
-          </p>
-        ) : (
-          <TrajectoryChart ys={ys} />
-        )}
-      </div>
-
-      {/* Chart footer */}
-      {ys.length > 0 && (
-        <div
-          style={{
-            marginTop: 12,
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 11,
-          }}
-        >
-          <span style={{ color: 'var(--ink-secondary)' }}>
-            first → most recent
-          </span>
-          <span style={{ color: 'var(--ink-primary)' }}>
-            {ys[0]!.toFixed(1)} → {ys[ys.length - 1]!.toFixed(1)}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TrajectoryChart({ ys }: { ys: number[] }) {
-  const W = 320;
-  const H = 90;
-  const PAD_X = 4;
-  const PAD_Y = 8;
-
-  // Single entry: just a centered dot, no line.
-  if (ys.length === 1) {
-    return (
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        width="100%"
-        preserveAspectRatio="xMidYMid meet"
-        aria-hidden="true"
-      >
-        <circle cx={W / 2} cy={H / 2} r={2.5} fill="var(--accent-sage)" />
-      </svg>
-    );
-  }
-
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  // Auto-fit y range with 10% padding. Enforce a minimum range so a tiny
-  // wobble on a sparse profile doesn't look like a cliff.
-  let yRange = Math.max(maxY - minY, 2.0);
-  const yPad = yRange * 0.1;
-  const yLow = minY - yPad;
-  const yHigh = maxY + yPad + (yRange - (maxY - minY));
-  const yScale = (y: number) =>
-    H - PAD_Y - ((y - yLow) / (yHigh - yLow)) * (H - PAD_Y * 2);
-
-  const points = ys.map((y, i) => ({
-    x: PAD_X + (i / (ys.length - 1)) * (W - PAD_X * 2),
-    y: yScale(y),
-  }));
-  const polyline = points
-    .map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`)
-    .join(' ');
-  const showDots = ys.length <= 25;
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      width="100%"
-      preserveAspectRatio="xMidYMid meet"
-      aria-hidden="true"
-    >
-      <polyline
-        points={polyline}
-        fill="none"
-        stroke="var(--accent-sage)"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      {showDots &&
-        points.map((p, i) => (
-          <circle
-            key={i}
-            cx={p.x}
-            cy={p.y}
-            r={2.5}
-            fill="var(--accent-sage)"
-          />
-        ))}
-    </svg>
-  );
-}
-
-function EntryRow({ entry, impact }: { entry: Entry; impact: number }) {
-  const impactRounded = Math.round(impact * 10) / 10;
-  const showImpact = Math.abs(impactRounded) >= 0.1;
-  const impactColor =
-    impactRounded > 0
-      ? 'var(--accent-sage)'
-      : impactRounded < 0
-        ? 'var(--accent-coral)'
-        : 'var(--ink-tertiary)';
-  const impactGlyph = impactRounded > 0 ? '+' : impactRounded < 0 ? '−' : '·';
-
+function EntryRow({ entry }: { entry: Entry }) {
   return (
     <div
       className="py-3"
       style={{ borderBottom: '0.5px solid var(--border-hair)' }}
     >
-      <div className="flex items-baseline justify-between gap-3">
-        <div
-          className="text-[10px] uppercase tracking-widest text-ink-tertiary"
-          style={{ fontFamily: 'var(--font-mono)' }}
-        >
-          {entryTime(entry.createdAt)}
-        </div>
-        {showImpact && (
-          <span
-            className="text-[10px] tabular-nums"
-            style={{ fontFamily: 'var(--font-mono)', color: impactColor }}
-            title="how this entry moved closeness"
-          >
-            {impactGlyph}
-            {Math.abs(impactRounded).toFixed(1)}
-          </span>
-        )}
+      <div
+        className="text-[10px] uppercase tracking-widest text-ink-tertiary"
+        style={{ fontFamily: 'var(--font-mono)' }}
+      >
+        {entryTime(entry.createdAt)}
       </div>
       <p
         className="mt-1 text-[14px] italic leading-snug text-ink-primary"

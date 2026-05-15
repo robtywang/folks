@@ -9,9 +9,10 @@ import {
   deleteEntry,
   updateEntryAttribution,
 } from '@/lib/save-entry';
+import { dismissPrompt } from '@/lib/prompts';
 import { hasLockPin, isUnlocked } from '@/lib/lock';
 import { LockScreen } from '@/components/lock-screen';
-import type { Entry, Person } from '@/types';
+import type { Entry, FriendPrompt, Person } from '@/types';
 
 function shortTime(timestamp: number): string {
   // en-US locale gives "1:38 AM" — upper-case AM/PM directly. CSS uppercases
@@ -255,6 +256,21 @@ function JournalContent() {
     []
   );
 
+  // Cross-cutting "noticed" feed — top 3 active prompts across all people.
+  // This is where the AI's observational layer lives. Tapping one bounces
+  // back to home with the question loaded as compose context.
+  const noticed = useLiveQuery(
+    async () => {
+      const all = await db.friendPrompts.toArray();
+      return all
+        .filter((p) => p.status === 'active')
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 3);
+    },
+    [],
+    [] as FriendPrompt[]
+  );
+
   const filteredEntries = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return entries;
@@ -296,6 +312,15 @@ function JournalContent() {
       </header>
 
       <div ref={scrollRef} className="-mx-4 flex-1 overflow-y-auto px-4 pb-12">
+        {/* Noticed — top of the journal feed. Cross-cutting AI observations
+            rendered as soft questions. Tap to answer in compose. */}
+        {noticed.length > 0 && (
+          <NoticedSection
+            prompts={noticed}
+            peopleById={peopleById}
+          />
+        )}
+
         {entries.length > 0 && (
           <div
             className="relative flex items-center"
@@ -402,6 +427,67 @@ function JournalContent() {
         </div>
       </div>
     </main>
+  );
+}
+
+function NoticedSection({
+  prompts,
+  peopleById,
+}: {
+  prompts: FriendPrompt[];
+  peopleById: Map<string, Person>;
+}) {
+  return (
+    <div className="mb-8 mt-2">
+      <div
+        className="mb-3 text-[10px] uppercase tracking-widest text-ink-secondary"
+        style={{ fontFamily: 'var(--font-mono)' }}
+      >
+        noticed
+      </div>
+      <ul className="space-y-2">
+        {prompts.map((p) => {
+          const person = peopleById.get(p.personId);
+          return (
+            <li
+              key={p.id}
+              className="relative rounded-md py-2 pl-3 pr-8"
+              style={{
+                background: 'rgba(200, 85, 61, 0.07)',
+                borderLeft: '2px solid var(--accent-coral)',
+              }}
+            >
+              <Link
+                href={`/?promptId=${p.id}`}
+                className="block transition-opacity hover:opacity-70"
+              >
+                {person && (
+                  <div
+                    className="text-[10px] uppercase tracking-widest text-ink-tertiary"
+                    style={{ fontFamily: 'var(--font-mono)' }}
+                  >
+                    about {person.name.toLowerCase()}
+                  </div>
+                )}
+                <p
+                  className="mt-0.5 text-[13px] italic leading-snug text-ink-primary"
+                  style={{ fontFamily: 'var(--font-fraunces)' }}
+                >
+                  {p.text}
+                </p>
+              </Link>
+              <button
+                onClick={() => dismissPrompt(p.id)}
+                aria-label="Dismiss"
+                className="absolute right-2 top-2 text-ink-tertiary transition-colors hover:text-accent-coral"
+              >
+                <i className="ti ti-x" style={{ fontSize: 12 }} />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 

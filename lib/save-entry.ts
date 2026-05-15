@@ -7,6 +7,8 @@ import {
 } from './db';
 import { parseEntry, type ParserEngine } from './ai';
 import { recomputePerson } from './closeness';
+import { maybeAutoFireReading } from './reading-auto';
+import { maybeRefreshPrompts } from './prompts';
 import type { Entry, ParseResponse, Person } from '@/types';
 
 export interface SaveResult {
@@ -84,6 +86,16 @@ export async function saveEntry(text: string): Promise<SaveResult> {
 
   if (personId) {
     await recomputePerson(personId);
+    // Auto-trigger Reading at threshold entries (3, 13, 23, 33...) — fire
+    // and forget so save isn't blocked by API latency. Failures are logged
+    // but don't fail the save.
+    void maybeAutoFireReading(personId).catch((err) => {
+      console.warn('auto Reading fire failed:', err);
+    });
+    // Refresh prompted questions for this person when new entry lands.
+    void maybeRefreshPrompts(personId, 'new_entry').catch((err) => {
+      console.warn('prompts refresh failed:', err);
+    });
   }
 
   // Surface same-first-name collisions so the UI can prompt for disambiguation.
