@@ -71,6 +71,10 @@ function ChatScreenInner() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentDraft, setCurrentDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // The person this chat is "about" — established from the first mentioned
+  // name in any user message and carried forward so pronouns resolve. Updated
+  // when a later user message explicitly names a different person.
+  const [activePersonId, setActivePersonId] = useState<string | null>(null);
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seededRef = useRef(false);
@@ -99,12 +103,18 @@ function ChatScreenInner() {
   );
 
   /**
-   * Call /api/folks-says with the user's thought + the corpus of any
-   * mentioned person. Append the response as a folks message.
+   * Call /api/folks-says with the user's thought + the corpus of the active
+   * person (whoever this chat thread is "about") + the prior conversation so
+   * the AI can resolve pronouns. Append the response as a folks message.
    */
   const fireFolksSays = useCallback(
-    async (thought: string) => {
-      const person = findMentionedPerson(thought);
+    async (thought: string, priorMessages: ChatMessage[], activeId: string | null) => {
+      // Person resolution: explicitly mentioned in THIS message > active person
+      // tracked from earlier in the chat > none.
+      let person = findMentionedPerson(thought);
+      if (!person && activeId) {
+        person = allPeople.find((p) => p.id === activeId) ?? null;
+      }
       let entries: Entry[] = [];
       if (person) {
         entries = await db.entries
@@ -135,6 +145,13 @@ function ChatScreenInner() {
               daysAgo: Math.floor((Date.now() - e.createdAt) / DAY_MS),
               severity: e.severity ?? 0,
             })),
+            // Last ~10 messages of this chat so the AI can resolve "she", "he",
+            // "they", "it" against earlier turns. User messages first, then
+            // folks responses — mixed in chronological order.
+            priorMessages: priorMessages.slice(-10).map((m) => ({
+              role: m.role,
+              text: m.text,
+            })),
           }),
         });
         if (!res.ok) {
@@ -161,7 +178,7 @@ function ChatScreenInner() {
         console.warn('folks-says failed:', err);
       }
     },
-    [findMentionedPerson]
+    [findMentionedPerson, allPeople]
   );
 
   /** Commit the current draft as a user message and immediately fire folks-says. */
@@ -169,14 +186,32 @@ function ChatScreenInner() {
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      setMessages((m) => [
-        ...m,
-        { id: uid(), role: 'user', text: trimmed, createdAt: Date.now() },
-      ]);
+      // Identify any newly-mentioned person in this message; if found, that
+      // becomes the active subject going forward.
+      const mentioned = findMentionedPerson(trimmed);
+      let nextActive = activePersonId;
+      if (mentioned) {
+        nextActive = mentioned.id;
+        setActivePersonId(mentioned.id);
+      }
+      setMessages((prev) => {
+        const next = [
+          ...prev,
+          {
+            id: uid(),
+            role: 'user' as const,
+            text: trimmed,
+            createdAt: Date.now(),
+          },
+        ];
+        // Use the snapshot AT commit time as priorMessages — includes the
+        // just-added user message so the AI sees the full conversation.
+        void fireFolksSays(trimmed, next, nextActive);
+        return next;
+      });
       setCurrentDraft('');
-      void fireFolksSays(trimmed);
     },
-    [fireFolksSays]
+    [fireFolksSays, findMentionedPerson, activePersonId]
   );
 
   // Seed handling — one-shot, runs after allPeople is loaded so corpus lookup works.
@@ -202,8 +237,9 @@ function ChatScreenInner() {
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' && currentDraft.trim()) {
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Shift+Enter inserts a newline; plain Enter commits the message.
+    if (e.key === 'Enter' && !e.shiftKey && currentDraft.trim()) {
       e.preventDefault();
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
       commitDraft(currentDraft);
@@ -218,16 +254,56 @@ function ChatScreenInner() {
     router.push('/');
   }
 
-  /** Send-to-journal: save just the user-role messages as one Dexie entry. */
-  async function handleSendToJournal() {
-    const userText = messages
+  // Compile-and-edit flow: tapping "send to journal" opens an inline editor
+  // populated with a summarized version of the user's thoughts. The user
+  // edits, then confirms to save.
+  const [compileOpen, setCompileOpen] = useState(false);
+  const [compileDraft, setCompileDraft] = useState('');
+  const [compiling, setCompiling] = useState(false);
+
+  function joinUserMessages(): string {
+    return messages
       .filter((m) => m.role === 'user')
       .map((m) => m.text)
-      .join('\n\n');
-    if (!userText.trim()) return;
+      .join(' ');
+  }
+
+  async function handleSendToJournal() {
+    const raw = joinUserMessages();
+    if (!raw.trim()) return;
+    setCompiling(true);
+    try {
+      // Ask the server to compile the chat into a clean first-person journal
+      // entry. Falls back to the raw concatenation if the API doesn't return.
+      const res = await fetch('/api/summarize-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: messages
+            .filter((m) => m.role === 'user')
+            .map((m) => m.text),
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { content?: string };
+        setCompileDraft(data.content?.trim() || raw);
+      } else {
+        setCompileDraft(raw);
+      }
+    } catch {
+      setCompileDraft(raw);
+    } finally {
+      setCompiling(false);
+      setCompileOpen(true);
+    }
+  }
+
+  async function confirmSendToJournal() {
+    const text = compileDraft.trim();
+    if (!text) return;
     setSending(true);
     try {
-      await saveEntry(userText);
+      await saveEntry(text);
     } catch (err) {
       console.error('send-to-journal failed:', err);
     } finally {
@@ -303,10 +379,10 @@ function ChatScreenInner() {
       </div>
 
       {/* Send-to-journal pill */}
-      {hasUserMessage && (
+      {hasUserMessage && !compileOpen && (
         <button
           onClick={handleSendToJournal}
-          disabled={sending}
+          disabled={compiling}
           className="absolute active:scale-[0.97] transition-transform"
           style={{
             left: '50%',
@@ -327,9 +403,97 @@ function ChatScreenInner() {
               color: CREAM,
             }}
           >
-            {sending ? 'saving…' : 'send to journal'}
+            {compiling ? 'compiling…' : 'send to journal'}
           </span>
         </button>
+      )}
+
+      {/* Compile-and-edit overlay — appears when the user taps send. They can
+          edit the summarized journal entry before confirming the save. */}
+      {compileOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.18 }}
+          className="absolute inset-0"
+          style={{ background: CREAM }}
+        >
+          <button
+            onClick={() => setCompileOpen(false)}
+            aria-label="Back to chat"
+            className="absolute"
+            style={{ left: 26, top: 82, width: 12, height: 12 }}
+          >
+            <svg width="14" height="12" viewBox="0 0 14 12">
+              <line x1="5" y1="1" x2="1" y2="6" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
+              <line x1="1" y1="6" x2="5" y2="11" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
+              <line x1="1" y1="6" x2="13" y2="6" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </button>
+          <div
+            className="absolute inset-x-0 text-center italic"
+            style={{
+              top: 88,
+              fontFamily: FONT_SERIF,
+              fontSize: 13,
+              color: INK_MUTED,
+            }}
+          >
+            review entry
+          </div>
+          <div
+            className="absolute"
+            style={{ left: 24, right: 24, top: 140, bottom: 110 }}
+          >
+            <textarea
+              value={compileDraft}
+              onChange={(e) => setCompileDraft(e.target.value)}
+              autoFocus
+              className="italic"
+              style={{
+                width: '100%',
+                height: '100%',
+                background: 'transparent',
+                border: 'none',
+                outline: 'none',
+                resize: 'none',
+                fontFamily: FONT_SERIF,
+                fontSize: 16,
+                color: INK,
+                caretColor: INK,
+                padding: 0,
+                lineHeight: 1.55,
+              }}
+            />
+          </div>
+          <button
+            onClick={confirmSendToJournal}
+            disabled={sending || !compileDraft.trim()}
+            className="absolute active:scale-[0.97] transition-transform"
+            style={{
+              left: '50%',
+              transform: 'translateX(-50%)',
+              bottom: 44,
+              width: 200,
+              height: 46,
+              borderRadius: 23,
+              background: CORAL,
+              border: 'none',
+              opacity: !compileDraft.trim() ? 0.5 : 1,
+            }}
+          >
+            <span
+              className="italic"
+              style={{
+                fontFamily: FONT_SERIF,
+                fontSize: 14,
+                color: CREAM,
+              }}
+            >
+              {sending ? 'saving…' : 'save to journal'}
+            </span>
+          </button>
+        </motion.div>
       )}
     </motion.main>
   );
@@ -433,37 +597,51 @@ function ActiveWritingArea({
 }: {
   value: string;
   onChange: (s: string) => void;
-  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onMicTap: () => void;
 }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  // Auto-grow: rest height matches one line, expand as text wraps.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(el.scrollHeight, 24)}px`;
+  }, [value]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
-      style={{ marginTop: 24 }}
+      style={{ marginTop: 24, position: 'relative' }}
     >
-      <div style={{ position: 'relative', height: 22 }}>
-        <input
-          type="text"
+      <div style={{ position: 'relative' }}>
+        <textarea
+          ref={ref}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           autoFocus
+          rows={1}
           className="italic"
           style={{
-            position: 'absolute',
-            inset: 0,
+            display: 'block',
             width: '100%',
             background: 'transparent',
             border: 'none',
             outline: 'none',
+            resize: 'none',
+            overflow: 'hidden',
             fontFamily: FONT_SERIF,
             fontSize: 16,
             color: INK,
             caretColor: INK,
-            padding: 0,
-            lineHeight: '22px',
+            paddingLeft: 0,
+            paddingRight: 36, // clear of the mic icon
+            paddingTop: 0,
+            paddingBottom: 0,
+            lineHeight: '24px',
           }}
         />
         {!value && (
@@ -476,25 +654,30 @@ function ActiveWritingArea({
               fontFamily: FONT_SERIF,
               fontSize: 16,
               color: TAN,
-              lineHeight: '22px',
+              lineHeight: '24px',
             }}
           >
             keep going
           </span>
         )}
-        <button
-          onClick={onMicTap}
-          aria-label="Voice"
-          className="absolute"
-          style={{ left: 278, top: -2, width: 24, height: 22 }}
-        >
-          <svg width="24" height="22" viewBox="0 0 24 22">
-            <rect x={11.2} y={8} width="1.6" height="6" rx="0.8" fill={TAN} />
-            <rect x={11.2 - 4} y={6} width="1.6" height="10" rx="0.8" fill={TAN} />
-            <rect x={11.2 + 4} y={6} width="1.6" height="10" rx="0.8" fill={TAN} />
-            <rect x={11.2 + 8} y={8} width="1.6" height="6" rx="0.8" fill={TAN} />
-          </svg>
-        </button>
+        {/* Mic anchored to TOP-right of the writing area so it stays put as
+            the textarea wraps and grows downward. Hidden once the user has
+            started typing — voice is an empty-state affordance. */}
+        {!value && (
+          <button
+            onClick={onMicTap}
+            aria-label="Voice"
+            className="absolute"
+            style={{ right: 0, top: 1, width: 24, height: 22 }}
+          >
+            <svg width="24" height="22" viewBox="0 0 24 22">
+              <rect x={11.2} y={8} width="1.6" height="6" rx="0.8" fill={TAN} />
+              <rect x={11.2 - 4} y={6} width="1.6" height="10" rx="0.8" fill={TAN} />
+              <rect x={11.2 + 4} y={6} width="1.6" height="10" rx="0.8" fill={TAN} />
+              <rect x={11.2 + 8} y={8} width="1.6" height="6" rx="0.8" fill={TAN} />
+            </svg>
+          </button>
+        )}
       </div>
       <div
         style={{

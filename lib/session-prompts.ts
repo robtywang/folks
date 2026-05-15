@@ -5,7 +5,7 @@
  * questions from detected patterns) — different domain, different file.
  */
 
-const ALL_PROMPTS = [
+export const ALL_PROMPTS = [
   "what's on your mind?",      // 0
   'how was today?',            // 1  ← evening
   "who's on your mind?",       // 2

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,7 +9,7 @@ import { pruneAllOrphans } from '@/lib/save-entry';
 import { recomputeAll } from '@/lib/closeness';
 import { expireOldPrompts } from '@/lib/prompts';
 import { hasLockPin } from '@/lib/lock';
-import { getPromptForSession } from '@/lib/session-prompts';
+import { ALL_PROMPTS } from '@/lib/session-prompts';
 import type { Person } from '@/types';
 
 const LEGACY_ONBOARDED_KEY = 'folks_onboarded';
@@ -43,8 +43,31 @@ export default function Home() {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
   const [draft, setDraft] = useState('');
-  // Picked once on mount — useState initializer, not per-render.
-  const [placeholder] = useState(() => getPromptForSession());
+
+  // Cycling placeholder: rotates through ALL_PROMPTS, evening-biased. The
+  // visible prompt swaps every 4 seconds with a fade between, and the
+  // currently-visible prompt also gently pulses opacity for a soft "blink"
+  // effect. Picked starting index once on mount so different sessions begin
+  // at different points in the cycle.
+  const prompts = useMemo<readonly string[]>(() => {
+    const hour = new Date().getHours();
+    const evening = hour >= 18 || hour < 6;
+    if (evening) {
+      const eveningIdx = [1, 5, 7];
+      return eveningIdx.map((i) => ALL_PROMPTS[i]!);
+    }
+    return ALL_PROMPTS;
+  }, []);
+  const [promptIdx, setPromptIdx] = useState(() =>
+    Math.floor(Math.random() * prompts.length)
+  );
+  useEffect(() => {
+    const id = setInterval(() => {
+      setPromptIdx((i) => (i + 1) % prompts.length);
+    }, 4000);
+    return () => clearInterval(id);
+  }, [prompts.length]);
+  const placeholder = prompts[promptIdx]!;
 
   // 3 most-recently-active people (grouped, sorted by their newest entry).
   const recentPeople =
@@ -124,39 +147,42 @@ export default function Home() {
       className="relative mx-auto h-[100svh] w-full overflow-hidden"
       style={{ background: '#FAF7F0', maxWidth: 360 }}
     >
-      {/* Top chrome */}
-      <div className="absolute inset-x-0" style={{ top: 86 }}>
-        <div
-          className="text-center italic"
-          style={{
-            fontFamily: 'Georgia, serif',
-            fontSize: 16,
-            lineHeight: 1,
-            color: '#1F1A14',
-          }}
-        >
-          folks
-        </div>
-        <div
-          className="text-center italic"
-          style={{
-            fontFamily: 'Georgia, serif',
-            fontSize: 11,
-            lineHeight: 1,
-            color: '#B4A689',
-            marginTop: 8,
-          }}
-        >
-          {formatDate()}
-        </div>
+      {/* Top chrome — "folks" wordmark sits high, small */}
+      <div
+        className="absolute inset-x-0 text-center italic"
+        style={{
+          top: 58,
+          fontFamily: 'Georgia, serif',
+          fontSize: 14,
+          lineHeight: 1,
+          color: '#1F1A14',
+        }}
+      >
+        folks
       </div>
 
-      {/* Notebook icon → /journal */}
+      {/* Date hero — the big centerpiece */}
+      <div
+        className="absolute inset-x-0 text-center italic"
+        style={{
+          top: 168,
+          fontFamily: 'Georgia, serif',
+          fontSize: 30,
+          fontWeight: 500,
+          lineHeight: 1.1,
+          color: '#1F1A14',
+          letterSpacing: '-0.005em',
+        }}
+      >
+        {formatDate()}
+      </div>
+
+      {/* Notebook icon → /journal (top-right, pinned high) */}
       <button
         onClick={() => router.push('/journal')}
         aria-label="Open journal"
         className="absolute"
-        style={{ left: 312, top: 80, width: 14, height: 18 }}
+        style={{ left: 312, top: 54, width: 14, height: 18 }}
       >
         <svg width="14" height="18" viewBox="0 0 14 18">
           <rect
@@ -184,9 +210,9 @@ export default function Home() {
         </svg>
       </button>
 
-      {/* Writing area */}
-      <div className="absolute" style={{ left: 24, right: 24, top: 174 }}>
-        <div style={{ position: 'relative', height: 22 }}>
+      {/* Writing area — sits below the date hero */}
+      <div className="absolute" style={{ left: 24, right: 24, top: 296 }}>
+        <div style={{ position: 'relative', height: 24 }}>
           <input
             type="text"
             value={draft}
@@ -206,51 +232,61 @@ export default function Home() {
               color: '#1F1A14',
               caretColor: '#1F1A14',
               padding: 0,
-              lineHeight: '22px',
+              paddingRight: 36, // clear of mic
+              lineHeight: '24px',
             }}
           />
           {!draft && (
-            <span
-              className="italic pointer-events-none"
-              style={{
-                position: 'absolute',
-                left: 8,
-                top: 0,
-                fontFamily: 'Georgia, serif',
-                fontSize: 16,
-                color: '#B4A689',
-                lineHeight: '22px',
-              }}
-            >
-              {placeholder}
-            </span>
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={placeholder}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0, 0.85, 0.6, 0.85, 0.6] }}
+                exit={{ opacity: 0 }}
+                transition={{
+                  duration: 4,
+                  times: [0, 0.1, 0.4, 0.7, 1],
+                  ease: 'easeInOut',
+                }}
+                className="italic pointer-events-none"
+                style={{
+                  position: 'absolute',
+                  left: 8,
+                  top: 0,
+                  fontFamily: 'Georgia, serif',
+                  fontSize: 16,
+                  color: '#B4A689',
+                  lineHeight: '24px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {placeholder}
+              </motion.span>
+            </AnimatePresence>
           )}
         </div>
 
-        {/* 4-bar mic icon centered at x=314 within the inset-24 frame */}
-        <button
-          onClick={handleMicTap}
-          aria-label="Voice"
-          className="absolute"
-          style={{
-            left: 278, // x=302 viewport → 302-24 = 278 within container
-            top: -2,
-            width: 24,
-            height: 22,
-          }}
-        >
-          <svg width="24" height="22" viewBox="0 0 24 22">
-            <rect x={11.2} y={8} width="1.6" height="6" rx="0.8" fill="#B4A689" />
-            <rect x={11.2 - 4} y={6} width="1.6" height="10" rx="0.8" fill="#B4A689" />
-            <rect x={11.2 + 4} y={6} width="1.6" height="10" rx="0.8" fill="#B4A689" />
-            <rect x={11.2 + 8} y={8} width="1.6" height="6" rx="0.8" fill="#B4A689" />
-          </svg>
-        </button>
+        {/* 4-bar mic icon — only when input is empty */}
+        {!draft && (
+          <button
+            onClick={handleMicTap}
+            aria-label="Voice"
+            className="absolute"
+            style={{ right: 0, top: -1, width: 24, height: 24 }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24">
+              <rect x={11.2} y={9} width="1.6" height="6" rx="0.8" fill="#B4A689" />
+              <rect x={11.2 - 4} y={7} width="1.6" height="10" rx="0.8" fill="#B4A689" />
+              <rect x={11.2 + 4} y={7} width="1.6" height="10" rx="0.8" fill="#B4A689" />
+              <rect x={11.2 + 8} y={9} width="1.6" height="6" rx="0.8" fill="#B4A689" />
+            </svg>
+          </button>
+        )}
 
         {/* Hairline under writing line */}
         <div
           style={{
-            marginTop: 12,
+            marginTop: 14,
             height: 0.7,
             background: '#B4A689',
             opacity: 0.55,
