@@ -246,10 +246,6 @@ function ChatScreenInner() {
     }
   }
 
-  function handleMicTap() {
-    // Voice mode wired in a follow-up.
-  }
-
   function handleCancel() {
     router.push('/');
   }
@@ -355,8 +351,8 @@ function ChatScreenInner() {
         style={{
           top: 140,
           bottom: hasUserMessage ? 110 : 24, // leave room for send pill when visible
-          paddingLeft: 24,
-          paddingRight: 24,
+          paddingLeft: 16,
+          paddingRight: 16,
         }}
       >
         <div className="flex flex-col gap-5">
@@ -374,7 +370,6 @@ function ChatScreenInner() {
           value={currentDraft}
           onChange={handleDraftChange}
           onKeyDown={handleKeyDown}
-          onMicTap={handleMicTap}
         />
       </div>
 
@@ -443,7 +438,7 @@ function ChatScreenInner() {
           </div>
           <div
             className="absolute"
-            style={{ left: 24, right: 24, top: 140, bottom: 110 }}
+            style={{ left: 16, right: 16, top: 140, bottom: 110 }}
           >
             <textarea
               value={compileDraft}
@@ -593,15 +588,13 @@ function ActiveWritingArea({
   value,
   onChange,
   onKeyDown,
-  onMicTap,
 }: {
   value: string;
   onChange: (s: string) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
-  onMicTap: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
-  // Auto-grow: rest height matches one line, expand as text wraps.
+  // Auto-grow so the box extends downward as text wraps.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -616,75 +609,28 @@ function ActiveWritingArea({
       transition={{ duration: 0.2, ease: 'easeOut' }}
       style={{ marginTop: 24, position: 'relative' }}
     >
-      <div style={{ position: 'relative' }}>
-        <textarea
-          ref={ref}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={onKeyDown}
-          autoFocus
-          rows={1}
-          className="italic"
-          style={{
-            display: 'block',
-            width: '100%',
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            resize: 'none',
-            overflow: 'hidden',
-            fontFamily: FONT_SERIF,
-            fontSize: 16,
-            color: INK,
-            caretColor: INK,
-            paddingLeft: 0,
-            paddingRight: 36, // clear of the mic icon
-            paddingTop: 0,
-            paddingBottom: 0,
-            lineHeight: '24px',
-          }}
-        />
-        {!value && (
-          <span
-            className="italic pointer-events-none"
-            style={{
-              position: 'absolute',
-              left: 8,
-              top: 0,
-              fontFamily: FONT_SERIF,
-              fontSize: 16,
-              color: TAN,
-              lineHeight: '24px',
-            }}
-          >
-            keep going
-          </span>
-        )}
-        {/* Mic anchored to TOP-right of the writing area so it stays put as
-            the textarea wraps and grows downward. Hidden once the user has
-            started typing — voice is an empty-state affordance. */}
-        {!value && (
-          <button
-            onClick={onMicTap}
-            aria-label="Voice"
-            className="absolute"
-            style={{ right: 0, top: 1, width: 24, height: 22 }}
-          >
-            <svg width="24" height="22" viewBox="0 0 24 22">
-              <rect x={11.2} y={8} width="1.6" height="6" rx="0.8" fill={TAN} />
-              <rect x={11.2 - 4} y={6} width="1.6" height="10" rx="0.8" fill={TAN} />
-              <rect x={11.2 + 4} y={6} width="1.6" height="10" rx="0.8" fill={TAN} />
-              <rect x={11.2 + 8} y={8} width="1.6" height="6" rx="0.8" fill={TAN} />
-            </svg>
-          </button>
-        )}
-      </div>
-      <div
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        autoFocus
+        rows={1}
+        className="italic"
         style={{
-          marginTop: 12,
-          height: 0.7,
-          background: TAN,
-          opacity: 0.55,
+          display: 'block',
+          width: '100%',
+          background: 'transparent',
+          border: 'none',
+          outline: 'none',
+          resize: 'none',
+          overflow: 'hidden',
+          fontFamily: FONT_SERIF,
+          fontSize: 16,
+          color: INK,
+          caretColor: INK,
+          padding: 0,
+          lineHeight: '24px',
         }}
       />
     </motion.div>

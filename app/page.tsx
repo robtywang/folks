@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -43,31 +43,71 @@ export default function Home() {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
   const [draft, setDraft] = useState('');
+  const [voiceInterim, setVoiceInterim] = useState('');
+  const [recording, setRecording] = useState(false);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Cycling placeholder: rotates through ALL_PROMPTS, evening-biased. The
-  // visible prompt swaps every 4 seconds with a fade between, and the
-  // currently-visible prompt also gently pulses opacity for a soft "blink"
-  // effect. Picked starting index once on mount so different sessions begin
-  // at different points in the cycle.
+  // Cycling typewriter placeholder. Each prompt types itself character by
+  // character (~70ms/char), holds full for ~1.8s, then erases (~30ms/char)
+  // and the next prompt begins. Evening-biased prompt pool.
   const prompts = useMemo<readonly string[]>(() => {
     const hour = new Date().getHours();
     const evening = hour >= 18 || hour < 6;
     if (evening) {
-      const eveningIdx = [1, 5, 7];
-      return eveningIdx.map((i) => ALL_PROMPTS[i]!);
+      return [1, 5, 7].map((i) => ALL_PROMPTS[i]!);
     }
     return ALL_PROMPTS;
   }, []);
   const [promptIdx, setPromptIdx] = useState(() =>
     Math.floor(Math.random() * prompts.length)
   );
+  const [typedCount, setTypedCount] = useState(0);
+  const [typePhase, setTypePhase] = useState<'typing' | 'holding' | 'erasing'>(
+    'typing'
+  );
+  const currentPrompt = prompts[promptIdx]!;
   useEffect(() => {
-    const id = setInterval(() => {
+    let cancelled = false;
+    const TYPE_MS = 70;
+    const ERASE_MS = 30;
+    const HOLD_MS = 1800;
+    if (typePhase === 'typing') {
+      if (typedCount < currentPrompt.length) {
+        const t = setTimeout(() => {
+          if (!cancelled) setTypedCount((c) => c + 1);
+        }, TYPE_MS);
+        return () => {
+          cancelled = true;
+          clearTimeout(t);
+        };
+      }
+      const t = setTimeout(() => {
+        if (!cancelled) setTypePhase('erasing');
+      }, HOLD_MS);
+      return () => {
+        cancelled = true;
+        clearTimeout(t);
+      };
+    }
+    if (typePhase === 'erasing') {
+      if (typedCount > 0) {
+        const t = setTimeout(() => {
+          if (!cancelled) setTypedCount((c) => c - 1);
+        }, ERASE_MS);
+        return () => {
+          cancelled = true;
+          clearTimeout(t);
+        };
+      }
       setPromptIdx((i) => (i + 1) % prompts.length);
-    }, 4000);
-    return () => clearInterval(id);
-  }, [prompts.length]);
-  const placeholder = prompts[promptIdx]!;
+      setTypePhase('typing');
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [typePhase, typedCount, currentPrompt, prompts.length]);
+  const placeholder = currentPrompt.slice(0, typedCount);
 
   // 3 most-recently-active people (grouped, sorted by their newest entry).
   const recentPeople =
@@ -113,15 +153,109 @@ export default function Home() {
     })();
   }, [router]);
 
-  function handleInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter' && draft.trim()) {
+  function handleInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Plain Enter (no shift) submits to /chat. Shift+Enter is newline.
+    if (e.key === 'Enter' && !e.shiftKey && draft.trim()) {
       e.preventDefault();
       router.push(`/chat?seed=${encodeURIComponent(draft.trim())}`);
     }
   }
 
+  // Auto-grow the textarea so writing wraps and extends downward.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(el.scrollHeight, 24)}px`;
+  }, [draft]);
+
+  function stopVoice() {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setRecording(false);
+    setVoiceInterim('');
+  }
+
   function handleMicTap() {
-    // Voice mode wired in a follow-up — Web Speech API into `draft`. No-op for now.
+    if (recording) {
+      stopVoice();
+      return;
+    }
+    if (typeof window === 'undefined') return;
+    // SpeechRecognition isn't in the default TS lib; treat the constructor
+    // and its events as untyped here. This is the standard pattern for
+    // the Web Speech API in Next.js + strict TS projects.
+    const w = window as unknown as Record<string, unknown>;
+    const SR = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as
+      | (new () => unknown)
+      | undefined;
+    if (!SR) {
+      alert('voice input is not supported in this browser. try chrome or safari.');
+      return;
+    }
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition = new SR() as any;
+    recognition.continuous = !isIOS;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    let baseText = draft ? draft + (draft.endsWith(' ') ? '' : ' ') : '';
+    let userStopped = false;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      let finalChunk = '';
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript as string;
+        if (event.results[i].isFinal) finalChunk += t;
+        else interim += t;
+      }
+      if (finalChunk) {
+        baseText += finalChunk;
+        setDraft(baseText);
+      }
+      setVoiceInterim(interim);
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (e: any) => {
+      const code = e?.error;
+      setVoiceInterim('');
+      if (code === 'aborted' || code === 'no-speech') {
+        if (!isIOS || userStopped) setRecording(false);
+        return;
+      }
+      userStopped = true;
+      setRecording(false);
+    };
+    recognition.onend = () => {
+      setVoiceInterim('');
+      if (isIOS && !userStopped) {
+        try {
+          recognition.start();
+          return;
+        } catch {}
+      }
+      if (!userStopped) setRecording(false);
+    };
+
+    recognitionRef.current = {
+      stop: () => {
+        userStopped = true;
+        try {
+          recognition.stop();
+        } catch {}
+      },
+    };
+    try {
+      recognition.start();
+      setRecording(true);
+    } catch (err) {
+      console.warn('recognition.start failed:', err);
+    }
   }
 
   function handlePersonTap(name: string) {
@@ -210,78 +344,84 @@ export default function Home() {
         </svg>
       </button>
 
-      {/* Writing area — sits below the date hero */}
-      <div className="absolute" style={{ left: 24, right: 24, top: 296 }}>
-        <div style={{ position: 'relative', height: 24 }}>
-          <input
-            type="text"
-            value={draft}
+      {/* Writing area — sits below the date hero. Edge-extending padding so
+          the writing surface reads close to the screen edges. */}
+      <div className="absolute" style={{ left: 16, right: 16, top: 296 }}>
+        <div style={{ position: 'relative' }}>
+          <textarea
+            ref={textareaRef}
+            value={draft + (recording ? voiceInterim : '')}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleInputKeyDown}
             autoFocus
+            rows={1}
+            readOnly={recording}
             className="italic"
             style={{
-              position: 'absolute',
-              inset: 0,
+              display: 'block',
               width: '100%',
               background: 'transparent',
               border: 'none',
               outline: 'none',
+              resize: 'none',
+              overflow: 'hidden',
               fontFamily: 'Georgia, serif',
               fontSize: 16,
               color: '#1F1A14',
               caretColor: '#1F1A14',
-              padding: 0,
+              paddingLeft: 0,
               paddingRight: 36, // clear of mic
+              paddingTop: 0,
+              paddingBottom: 0,
               lineHeight: '24px',
             }}
           />
-          {!draft && (
-            <AnimatePresence mode="wait">
-              <motion.span
-                key={placeholder}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: [0, 0.85, 0.6, 0.85, 0.6] }}
-                exit={{ opacity: 0 }}
-                transition={{
-                  duration: 4,
-                  times: [0, 0.1, 0.4, 0.7, 1],
-                  ease: 'easeInOut',
-                }}
-                className="italic pointer-events-none"
+          {!draft && !voiceInterim && (
+            <span
+              className="italic pointer-events-none"
+              style={{
+                position: 'absolute',
+                left: 1,
+                top: 0,
+                fontFamily: 'Georgia, serif',
+                fontSize: 16,
+                color: '#B4A689',
+                lineHeight: '24px',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {placeholder}
+              <span
+                aria-hidden="true"
                 style={{
-                  position: 'absolute',
-                  left: 8,
-                  top: 0,
-                  fontFamily: 'Georgia, serif',
-                  fontSize: 16,
-                  color: '#B4A689',
-                  lineHeight: '24px',
-                  whiteSpace: 'nowrap',
+                  display: 'inline-block',
+                  width: 1.5,
+                  height: '0.9em',
+                  background: '#B4A689',
+                  verticalAlign: 'middle',
+                  marginLeft: 1,
+                  animation: 'blink-caret 1.05s steps(1) infinite',
                 }}
-              >
-                {placeholder}
-              </motion.span>
-            </AnimatePresence>
+              />
+            </span>
+          )}
+          {/* Mic — empty state only. Tap to start/stop voice. */}
+          {!draft && (
+            <button
+              onClick={handleMicTap}
+              aria-label={recording ? 'Stop voice' : 'Start voice'}
+              className="absolute"
+              style={{ right: 0, top: -1, width: 24, height: 24 }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24">
+                <rect x={11.2} y={9} width="1.6" height="6" rx="0.8" fill={recording ? '#C8553D' : '#B4A689'} />
+                <rect x={11.2 - 4} y={7} width="1.6" height="10" rx="0.8" fill={recording ? '#C8553D' : '#B4A689'} />
+                <rect x={11.2 + 4} y={7} width="1.6" height="10" rx="0.8" fill={recording ? '#C8553D' : '#B4A689'} />
+                <rect x={11.2 + 8} y={9} width="1.6" height="6" rx="0.8" fill={recording ? '#C8553D' : '#B4A689'} />
+              </svg>
+            </button>
           )}
         </div>
-
-        {/* 4-bar mic icon — only when input is empty */}
-        {!draft && (
-          <button
-            onClick={handleMicTap}
-            aria-label="Voice"
-            className="absolute"
-            style={{ right: 0, top: -1, width: 24, height: 24 }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24">
-              <rect x={11.2} y={9} width="1.6" height="6" rx="0.8" fill="#B4A689" />
-              <rect x={11.2 - 4} y={7} width="1.6" height="10" rx="0.8" fill="#B4A689" />
-              <rect x={11.2 + 4} y={7} width="1.6" height="10" rx="0.8" fill="#B4A689" />
-              <rect x={11.2 + 8} y={9} width="1.6" height="6" rx="0.8" fill="#B4A689" />
-            </svg>
-          </button>
-        )}
 
         {/* Hairline under writing line */}
         <div
@@ -304,7 +444,7 @@ export default function Home() {
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.25, ease: showRecent ? 'easeIn' : 'easeOut' }}
             className="absolute"
-            style={{ left: 24, right: 24, top: 478 }}
+            style={{ left: 16, right: 16, top: 478 }}
           >
             <div className="flex items-center gap-3">
               <span
