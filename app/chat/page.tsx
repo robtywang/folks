@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -48,6 +49,21 @@ const TAN = '#B4A689';
 const CORAL = '#C8553D';
 
 export default function ChatScreen() {
+  return (
+    <Suspense
+      fallback={
+        <main
+          className="mx-auto h-[100svh] w-full"
+          style={{ background: '#FAF7F0', maxWidth: 360 }}
+        />
+      }
+    >
+      <ChatScreenInner />
+    </Suspense>
+  );
+}
+
+function ChatScreenInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const seed = searchParams?.get('seed') ?? null;
