@@ -17,20 +17,21 @@ function buildPrompt(messages: string[]): string {
   const joined = messages.map((m, i) => `${i + 1}. ${m}`).join('\n');
   return `The user just had a chat session venting about something going on. Below are the things they said, in order — fragments, half-thoughts, the way you'd text a friend at night.
 
-Compile these into a single first-person journal entry. Keep it in THEIR voice — lowercase, conversational, the same words they used. Don't editorialize. Don't add observations. Don't make it sound like a polished memoir. It should feel like the user typed it themselves as a real journal entry.
+Compile these into a single first-person journal entry AND lightly clean up grammar, punctuation, and obvious typos along the way. The goal: keep the user's voice exactly, but make the final text read smoothly as a journal entry rather than as text fragments.
 
 THEIR THOUGHTS (in order):
 ${joined}
 
 Return JSON only, no preamble:
 {
-  "content": "<the compiled journal entry — 2-5 sentences typically, single paragraph, no line breaks unless they're meaningful>"
+  "content": "<the compiled and lightly grammar-fixed journal entry — single paragraph by default, no line breaks unless meaningful>"
 }
 
 Rules:
 - First-person. Preserve "i" / "me" / "my" exactly as in their messages.
-- Lowercase unless they used capitals (names, "I" if they capitalized it).
-- Smooth the flow — fragments → connected sentences — but don't invent details.
+- Lowercase by default unless they used capitals (names always keep their case; "I" if they capitalized it).
+- LIGHT grammar + punctuation cleanup: fix obvious typos, add missing commas / periods, capitalize after periods if appropriate, fix dropped articles ("a", "the") that read weirdly. Do NOT rewrite sentences. Do NOT change word choice.
+- Smooth the flow — fragments → connected sentences — without inventing details.
 - Keep the same names, same events, same emotional tone.
 - Don't add reassurance. Don't add advice. Don't conclude with a moral.
 - If they repeated something, dedupe naturally.

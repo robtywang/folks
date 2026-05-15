@@ -351,8 +351,8 @@ function ChatScreenInner() {
         style={{
           top: 140,
           bottom: hasUserMessage ? 110 : 24, // leave room for send pill when visible
-          paddingLeft: 16,
-          paddingRight: 16,
+          paddingLeft: 12,
+          paddingRight: 12,
         }}
       >
         <div className="flex flex-col gap-5">
@@ -370,6 +370,10 @@ function ChatScreenInner() {
           value={currentDraft}
           onChange={handleDraftChange}
           onKeyDown={handleKeyDown}
+          onSend={() => {
+            if (debounceTimer.current) clearTimeout(debounceTimer.current);
+            commitDraft(currentDraft);
+          }}
         />
       </div>
 
@@ -403,42 +407,57 @@ function ChatScreenInner() {
         </button>
       )}
 
-      {/* Compile-and-edit overlay — appears when the user taps send. They can
-          edit the summarized journal entry before confirming the save. */}
+      {/* Compile-and-edit drawer — slides up from the bottom and covers
+          ~60% of the viewport. Chat history stays visible above so the user
+          can scroll the chat behind to re-read. Tap × or back arrow to
+          dismiss; tap save to commit to the journal. */}
       {compileOpen && (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.18 }}
-          className="absolute inset-0"
-          style={{ background: CREAM }}
+          initial={{ y: '100%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '100%' }}
+          transition={{ duration: 0.22, ease: 'easeOut' }}
+          className="absolute inset-x-0 bottom-0"
+          style={{
+            height: '62%',
+            background: CREAM,
+            borderTopLeftRadius: 18,
+            borderTopRightRadius: 18,
+            borderTop: `0.5px solid ${TAN}`,
+            boxShadow: '0 -6px 20px rgba(31,26,20,0.06)',
+          }}
         >
-          <button
-            onClick={() => setCompileOpen(false)}
-            aria-label="Back to chat"
-            className="absolute"
-            style={{ left: 26, top: 82, width: 12, height: 12 }}
-          >
-            <svg width="14" height="12" viewBox="0 0 14 12">
-              <line x1="5" y1="1" x2="1" y2="6" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
-              <line x1="1" y1="6" x2="5" y2="11" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
-              <line x1="1" y1="6" x2="13" y2="6" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
-          </button>
-          <div
-            className="absolute inset-x-0 text-center italic"
-            style={{
-              top: 88,
-              fontFamily: FONT_SERIF,
-              fontSize: 13,
-              color: INK_MUTED,
-            }}
-          >
-            review entry
+          {/* Drawer top — small handle + label + back arrow */}
+          <div className="relative" style={{ height: 44 }}>
+            <button
+              onClick={() => setCompileOpen(false)}
+              aria-label="Back to chat"
+              className="absolute"
+              style={{ left: 14, top: 14, width: 18, height: 14, background: 'transparent', border: 'none', padding: 0 }}
+            >
+              <svg width="18" height="14" viewBox="0 0 18 14">
+                <line x1="6" y1="2" x2="2" y2="7" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
+                <line x1="2" y1="7" x2="6" y2="12" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
+                <line x1="2" y1="7" x2="16" y2="7" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
+              </svg>
+            </button>
+            <div
+              className="absolute inset-x-0 text-center italic"
+              style={{
+                top: 14,
+                fontFamily: FONT_SERIF,
+                fontSize: 13,
+                color: INK_MUTED,
+              }}
+            >
+              review entry
+            </div>
           </div>
+
+          {/* Editable compiled entry */}
           <div
             className="absolute"
-            style={{ left: 16, right: 16, top: 140, bottom: 110 }}
+            style={{ left: 12, right: 12, top: 50, bottom: 84 }}
           >
             <textarea
               value={compileDraft}
@@ -461,6 +480,8 @@ function ChatScreenInner() {
               }}
             />
           </div>
+
+          {/* Save pill anchored to drawer bottom */}
           <button
             onClick={confirmSendToJournal}
             disabled={sending || !compileDraft.trim()}
@@ -468,7 +489,7 @@ function ChatScreenInner() {
             style={{
               left: '50%',
               transform: 'translateX(-50%)',
-              bottom: 44,
+              bottom: 20,
               width: 200,
               height: 46,
               borderRadius: 23,
@@ -588,10 +609,12 @@ function ActiveWritingArea({
   value,
   onChange,
   onKeyDown,
+  onSend,
 }: {
   value: string;
   onChange: (s: string) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onSend: () => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow so the box extends downward as text wraps.
@@ -601,6 +624,14 @@ function ActiveWritingArea({
     el.style.height = 'auto';
     el.style.height = `${Math.max(el.scrollHeight, 24)}px`;
   }, [value]);
+  // Force focus on mount — some mobile browsers ignore autoFocus on
+  // programmatic navigation, leaving the caret invisible until tap.
+  useEffect(() => {
+    const id = setTimeout(() => ref.current?.focus(), 80);
+    return () => clearTimeout(id);
+  }, []);
+
+  const trimmed = value.trim();
 
   return (
     <motion.div
@@ -609,30 +640,69 @@ function ActiveWritingArea({
       transition={{ duration: 0.2, ease: 'easeOut' }}
       style={{ marginTop: 24, position: 'relative' }}
     >
-      <textarea
-        ref={ref}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        autoFocus
-        rows={1}
-        className="italic"
-        style={{
-          display: 'block',
-          width: '100%',
-          background: 'transparent',
-          border: 'none',
-          outline: 'none',
-          resize: 'none',
-          overflow: 'hidden',
-          fontFamily: FONT_SERIF,
-          fontSize: 16,
-          color: INK,
-          caretColor: INK,
-          padding: 0,
-          lineHeight: '24px',
-        }}
-      />
+      <div style={{ position: 'relative' }}>
+        <textarea
+          ref={ref}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          autoFocus
+          rows={1}
+          className="italic"
+          style={{
+            display: 'block',
+            width: '100%',
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            resize: 'none',
+            overflow: 'hidden',
+            fontFamily: FONT_SERIF,
+            fontSize: 16,
+            color: INK,
+            caretColor: INK,
+            padding: 0,
+            lineHeight: '24px',
+          }}
+        />
+        {/* Visible blinking caret when the field is empty — covers mobile
+            browsers where the native caret only renders after user tap. */}
+        {!value && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 4,
+              width: 1.5,
+              height: 18,
+              background: INK,
+              animation: 'blink-caret 1.05s steps(1) infinite',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+      </div>
+      {/* Send button — explicit prompt-the-AI affordance for mobile, where
+          Enter on a textarea inserts a newline rather than submitting. */}
+      {trimmed.length > 0 && (
+        <div className="mt-2 flex items-center justify-end">
+          <button
+            onClick={onSend}
+            className="text-[11px] uppercase tracking-widest"
+            style={{
+              fontFamily: FONT_MONO,
+              fontWeight: 500,
+              color: CORAL,
+              background: 'transparent',
+              border: 'none',
+              letterSpacing: '0.12em',
+            }}
+          >
+            send →
+          </button>
+        </div>
+      )}
     </motion.div>
   );
 }
