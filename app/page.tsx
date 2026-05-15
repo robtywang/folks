@@ -64,6 +64,7 @@ export default function Home() {
   const [voiceInterim, setVoiceInterim] = useState('');
   const [recording, setRecording] = useState(false);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Known people for inline coral name-highlighting.
@@ -155,11 +156,14 @@ export default function Home() {
     el.style.height = `${Math.max(el.scrollHeight, 24)}px`;
   }, [draft, voiceInterim]);
 
-  function sendDraft() {
+  function sendDraft(opts?: { fromVoice?: boolean }) {
     const text = draft.trim();
     if (!text) return;
-    if (recording) stopVoice();
-    router.push(`/chat?seed=${encodeURIComponent(text)}`);
+    if (recording && !opts?.fromVoice) stopVoice();
+    // Voice-mode handoff: when the user started this on the mic, we pass
+    // mode=voice so /chat picks up where they left off and keeps listening.
+    const mode = opts?.fromVoice ? '&mode=voice' : '';
+    router.push(`/chat?seed=${encodeURIComponent(text)}${mode}`);
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -170,6 +174,10 @@ export default function Home() {
   }
 
   function stopVoice() {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     setRecording(false);
@@ -198,6 +206,20 @@ export default function Home() {
     let baseText = draft ? draft + (draft.endsWith(' ') ? '' : ' ') : '';
     let userStopped = false;
 
+    const SILENCE_MS = 1800;
+    const autoSubmit = () => {
+      const finalText = baseText.trim();
+      if (!finalText) return;
+      userStopped = true;
+      try {
+        recognition.stop();
+      } catch {}
+      setRecording(false);
+      setVoiceInterim('');
+      // Pass through voice mode so /chat keeps listening for the next utterance.
+      router.push(`/chat?seed=${encodeURIComponent(finalText)}&mode=voice`);
+    };
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       let finalChunk = '';
@@ -212,6 +234,11 @@ export default function Home() {
         setDraft(baseText);
       }
       setVoiceInterim(interim);
+      // Silence-detect: each time results land (interim or final), restart
+      // the 1.8s timer. When it fires, we treat the user as "done speaking"
+      // and auto-submit to /chat with the recorded text.
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(autoSubmit, SILENCE_MS);
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
@@ -421,16 +448,15 @@ export default function Home() {
           )}
         </div>
 
-        {/* Short centered hairline — accent under writing line, not a divider */}
+        {/* Hairline sits directly under the writing line so the placeholder
+            text reads as if written on the line. */}
         <div
           style={{
-            marginTop: 14,
-            marginLeft: 'auto',
-            marginRight: 'auto',
-            width: '60%',
+            marginTop: 12,
+            width: '100%',
             height: 0.7,
             background: TAN,
-            opacity: 0.5,
+            opacity: 0.55,
           }}
         />
 
@@ -459,7 +485,7 @@ export default function Home() {
           </button>
           {hasText && (
             <button
-              onClick={sendDraft}
+              onClick={() => sendDraft()}
               className="text-[11px] uppercase tracking-widest"
               style={{
                 fontFamily: 'JetBrains Mono, monospace',

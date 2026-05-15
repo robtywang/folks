@@ -67,6 +67,7 @@ function ChatScreenInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const seed = searchParams?.get('seed') ?? null;
+  const mode = searchParams?.get('mode') ?? null; // 'voice' | null
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentDraft, setCurrentDraft] = useState('');
@@ -75,9 +76,16 @@ function ChatScreenInner() {
   // name in any user message and carried forward so pronouns resolve. Updated
   // when a later user message explicitly names a different person.
   const [activePersonId, setActivePersonId] = useState<string | null>(null);
+  // Voice mode: if true, /chat is actively listening. Each utterance auto-
+  // commits as a user message + fires folks-says. User can switch to text
+  // mode by typing (mic stops).
+  const [voiceMode, setVoiceMode] = useState(mode === 'voice');
+  const [voiceInterim, setVoiceInterim] = useState('');
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seededRef = useRef(false);
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Known people for inline coral name-highlighting and corpus lookup.
   const allPeople: Person[] =
@@ -225,6 +233,115 @@ function ChatScreenInner() {
     commitDraft(seed);
   }, [seed, commitDraft]);
 
+  // Voice mode — auto-start recognition on mount when arriving from home in
+  // voice mode. Each utterance auto-commits on silence (1.8s) so the user
+  // can keep speaking and folks responds between sentences.
+  function stopVoiceMode() {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setVoiceMode(false);
+    setVoiceInterim('');
+  }
+
+  function startVoiceMode() {
+    if (typeof window === 'undefined') return;
+    const w = window as unknown as Record<string, unknown>;
+    const SR = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as
+      | (new () => unknown)
+      | undefined;
+    if (!SR) {
+      setVoiceMode(false);
+      return;
+    }
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition = new SR() as any;
+    recognition.continuous = !isIOS;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    let buffer = '';
+    let userStopped = false;
+
+    const SILENCE_MS = 1800;
+    const flushUtterance = () => {
+      const text = buffer.trim();
+      buffer = '';
+      setVoiceInterim('');
+      if (text) commitDraft(text);
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      let finalChunk = '';
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript as string;
+        if (event.results[i].isFinal) finalChunk += t;
+        else interim += t;
+      }
+      if (finalChunk) buffer += (buffer.endsWith(' ') || !buffer ? '' : ' ') + finalChunk;
+      setVoiceInterim(interim);
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(flushUtterance, SILENCE_MS);
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (e: any) => {
+      const code = e?.error;
+      if (code === 'no-speech' || code === 'aborted') {
+        if (!isIOS || userStopped) {
+          setVoiceMode(false);
+        }
+        return;
+      }
+      userStopped = true;
+      setVoiceMode(false);
+    };
+    recognition.onend = () => {
+      if (isIOS && !userStopped) {
+        try {
+          recognition.start();
+          return;
+        } catch {}
+      }
+      setVoiceMode(false);
+      setVoiceInterim('');
+    };
+
+    recognitionRef.current = {
+      stop: () => {
+        userStopped = true;
+        try {
+          recognition.stop();
+        } catch {}
+      },
+    };
+    try {
+      recognition.start();
+    } catch (err) {
+      console.warn('chat recognition.start failed:', err);
+      setVoiceMode(false);
+    }
+  }
+
+  // Auto-start voice when the chat opens in voice mode.
+  useEffect(() => {
+    if (voiceMode && !recognitionRef.current) startVoiceMode();
+    // Cleanup on unmount.
+    return () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voiceMode]);
+
   // Debounce: 2s after the user stops typing AND >=6 words → commit + fire.
   function handleDraftChange(next: string) {
     setCurrentDraft(next);
@@ -318,51 +435,104 @@ function ChatScreenInner() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
-      className="relative mx-auto h-[100svh] w-full overflow-hidden"
-      style={{ background: CREAM, maxWidth: 360 }}
+      className="relative h-full w-full overflow-hidden"
     >
-      {/* Top chrome */}
+      {/* X cancel — high + left, mirrors home's notebook icon corner */}
       <button
         onClick={handleCancel}
         aria-label="Cancel"
         className="absolute"
-        style={{ left: 26, top: 82, width: 12, height: 12 }}
+        style={{
+          left: 14,
+          top: 14,
+          width: 14,
+          height: 14,
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+        }}
       >
-        <svg width="12" height="12" viewBox="0 0 12 12">
-          <line x1="1" y1="1" x2="11" y2="11" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
-          <line x1="11" y1="1" x2="1" y2="11" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
+        <svg width="14" height="14" viewBox="0 0 14 14">
+          <line x1="1" y1="1" x2="13" y2="13" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
+          <line x1="13" y1="1" x2="1" y2="13" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
         </svg>
       </button>
+
+      {/* Date hero — same role as home's date, slightly smaller so the chat
+          content gets more breathing room. Sits high under the dynamic island. */}
       <div
         className="absolute inset-x-0 text-center italic"
         style={{
-          top: 88,
+          top: 30,
           fontFamily: FONT_SERIF,
-          fontSize: 13,
-          color: INK_MUTED,
+          fontSize: 26,
+          fontWeight: 500,
+          lineHeight: 1.1,
+          color: INK,
+          letterSpacing: '-0.005em',
         }}
       >
         {formatToday()}
       </div>
 
+      {/* Voice-mode indicator — subtle coral mic + "listening" label */}
+      {voiceMode && (
+        <button
+          onClick={stopVoiceMode}
+          aria-label="Stop voice"
+          className="absolute"
+          style={{
+            right: 14,
+            top: 14,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14">
+            <rect x={6.2} y={5} width="1.6" height="4" rx="0.8" fill={CORAL} />
+            <rect x={6.2 - 3} y={3.5} width="1.6" height="7" rx="0.8" fill={CORAL} />
+            <rect x={6.2 + 3} y={3.5} width="1.6" height="7" rx="0.8" fill={CORAL} />
+          </svg>
+          <span
+            className="text-[10px] uppercase tracking-widest"
+            style={{
+              fontFamily: FONT_MONO,
+              color: CORAL,
+              letterSpacing: '0.12em',
+            }}
+          >
+            listening
+          </span>
+        </button>
+      )}
+
       {/* Scrollable content area + writing area at the bottom */}
       <div
         className="absolute inset-x-0 overflow-y-auto"
         style={{
-          top: 140,
+          top: 84,
           bottom: hasUserMessage ? 110 : 24, // leave room for send pill when visible
           paddingLeft: 12,
           paddingRight: 12,
         }}
       >
         <div className="flex flex-col gap-5">
-          {messages.map((m, i) =>
-            m.role === 'user' ? (
-              <UserMessage key={m.id} text={m.text} people={allPeople} />
-            ) : (
-              <FolksMessage key={m.id} text={m.text} />
-            )
-          )}
+          {messages.map((m, i) => {
+            if (m.role === 'user') {
+              return <UserMessage key={m.id} text={m.text} people={allPeople} />;
+            }
+            // Folks message becomes "stale" only when a later user message
+            // exists — i.e., the user has moved on to a new thought. While
+            // it's still the latest folks reply, it stays full-opacity.
+            const stale = messages
+              .slice(i + 1)
+              .some((later) => later.role === 'user');
+            return <FolksMessage key={m.id} text={m.text} stale={stale} />;
+          })}
         </div>
 
         {/* Active writing area — slides in below the latest content */}
@@ -536,46 +706,21 @@ function UserMessage({ text, people }: { text: string; people: Person[] }) {
 }
 
 /**
- * Folks message lifecycle:
- *   t=0     → mount, opacity 0, y +4
- *   t=0.3s  → opacity 1, y 0 (fade-in complete)
- *   t=4.3s  → start fading to 0.4 over 2s
- *   t=6.3s  → continue to 0.08 over 10s
- *   t=16.3s → stay at 0.08 (visible-ghost state)
+ * Folks message stays at full opacity while it's the most recent reply.
+ * Once the user submits another message after it (becoming "stale"), it
+ * fades to a soft ghost state — preserving history without competing with
+ * the current turn.
  */
-function FolksMessage({ text }: { text: string }) {
-  type Phase = 'enter' | 'visible' | 'fading' | 'ghost';
-  const [phase, setPhase] = useState<Phase>('enter');
-
-  useEffect(() => {
-    const t1 = setTimeout(() => setPhase('visible'), 300); // fade-in done
-    const t2 = setTimeout(() => setPhase('fading'), 300 + 4000); // start 2s fade
-    const t3 = setTimeout(() => setPhase('ghost'), 300 + 4000 + 2000); // start 10s fade
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-    };
-  }, []);
-
-  const target = (() => {
-    switch (phase) {
-      case 'enter':
-        return { opacity: 0, y: 4, duration: 0 };
-      case 'visible':
-        return { opacity: 1, y: 0, duration: 0.3 };
-      case 'fading':
-        return { opacity: 0.4, y: 0, duration: 2 };
-      case 'ghost':
-        return { opacity: 0.08, y: 0, duration: 10 };
-    }
-  })();
+function FolksMessage({ text, stale }: { text: string; stale: boolean }) {
+  const target = stale
+    ? { opacity: 0.28, y: 0, duration: 1.6 }
+    : { opacity: 1, y: 0, duration: 0.3 };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: target.opacity, y: target.y }}
-      transition={{ duration: target.duration, ease: 'linear' }}
+      transition={{ duration: target.duration, ease: 'easeOut' }}
     >
       <div
         style={{
