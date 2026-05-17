@@ -16,14 +16,15 @@ const LEGACY_ONBOARDED_KEY = 'folks_onboarded';
 const STEP4_SESSION_KEY = 'folks_onboarding_step_4';
 
 function formatDate(): string {
-  const d = new Date();
-  const weekday = d.toLocaleDateString('en-US', { weekday: 'long' });
-  const monthDay = d.toLocaleDateString('en-US', {
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
     month: 'long',
     day: 'numeric',
+    year: 'numeric',
   });
-  return `${weekday} · ${monthDay}`;
 }
+
+const USER_NAME_KEY = 'folks_user_name';
 
 const CORAL = '#C8553D';
 const INK = '#1F1A14';
@@ -61,11 +62,15 @@ export default function Home() {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
   const [draft, setDraft] = useState('');
-  const [voiceInterim, setVoiceInterim] = useState('');
-  const [recording, setRecording] = useState(false);
-  const recognitionRef = useRef<{ stop: () => void } | null>(null);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(USER_NAME_KEY);
+      if (stored && stored.trim()) setUserName(stored.trim());
+    } catch {}
+  }, []);
 
   // Known people for inline coral name-highlighting.
   const allPeople =
@@ -154,16 +159,12 @@ export default function Home() {
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.max(el.scrollHeight, 24)}px`;
-  }, [draft, voiceInterim]);
+  }, [draft]);
 
-  function sendDraft(opts?: { fromVoice?: boolean }) {
+  function sendDraft() {
     const text = draft.trim();
     if (!text) return;
-    if (recording && !opts?.fromVoice) stopVoice();
-    // Voice-mode handoff: when the user started this on the mic, we pass
-    // mode=voice so /chat picks up where they left off and keeps listening.
-    const mode = opts?.fromVoice ? '&mode=voice' : '';
-    router.push(`/chat?seed=${encodeURIComponent(text)}${mode}`);
+    router.push(`/chat?seed=${encodeURIComponent(text)}`);
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -173,123 +174,18 @@ export default function Home() {
     }
   }
 
-  function stopVoice() {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setRecording(false);
-    setVoiceInterim('');
-  }
-
-  function startVoice() {
-    if (typeof window === 'undefined') return;
-    const w = window as unknown as Record<string, unknown>;
-    const SR = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as
-      | (new () => unknown)
-      | undefined;
-    if (!SR) {
-      alert('voice input is not supported in this browser. try chrome or safari.');
-      return;
-    }
-    const isIOS =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const recognition = new SR() as any;
-    recognition.continuous = !isIOS;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    let baseText = draft ? draft + (draft.endsWith(' ') ? '' : ' ') : '';
-    let userStopped = false;
-
-    const SILENCE_MS = 1800;
-    const autoSubmit = () => {
-      const finalText = baseText.trim();
-      if (!finalText) return;
-      userStopped = true;
-      try {
-        recognition.stop();
-      } catch {}
-      setRecording(false);
-      setVoiceInterim('');
-      // Pass through voice mode so /chat keeps listening for the next utterance.
-      router.push(`/chat?seed=${encodeURIComponent(finalText)}&mode=voice`);
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onresult = (event: any) => {
-      let finalChunk = '';
-      let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const t = event.results[i][0].transcript as string;
-        if (event.results[i].isFinal) finalChunk += t;
-        else interim += t;
-      }
-      if (finalChunk) {
-        baseText += finalChunk;
-        setDraft(baseText);
-      }
-      setVoiceInterim(interim);
-      // Silence-detect: each time results land (interim or final), restart
-      // the 1.8s timer. When it fires, we treat the user as "done speaking"
-      // and auto-submit to /chat with the recorded text.
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(autoSubmit, SILENCE_MS);
-    };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    recognition.onerror = (e: any) => {
-      const code = e?.error;
-      setVoiceInterim('');
-      if (code === 'aborted' || code === 'no-speech') {
-        if (!isIOS || userStopped) setRecording(false);
-        return;
-      }
-      userStopped = true;
-      setRecording(false);
-    };
-    recognition.onend = () => {
-      setVoiceInterim('');
-      if (isIOS && !userStopped) {
-        try {
-          recognition.start();
-          return;
-        } catch {}
-      }
-      if (!userStopped) setRecording(false);
-    };
-
-    recognitionRef.current = {
-      stop: () => {
-        userStopped = true;
-        try {
-          recognition.stop();
-        } catch {}
-      },
-    };
-    try {
-      recognition.start();
-      setRecording(true);
-    } catch (err) {
-      console.warn('recognition.start failed:', err);
-    }
-  }
-
-  function handleVoiceToggle() {
-    if (recording) stopVoice();
-    else startVoice();
+  // Voice = enter the chat in voice mode. No local recording on home; the
+  // chat owns the entire conversation surface including audio.
+  function enterVoiceMode() {
+    router.push('/chat?mode=voice');
   }
 
   if (!checked) {
     return <main className="h-full w-full" />;
   }
 
-  const composedValue = draft + (recording && voiceInterim ? voiceInterim : '');
   const hasText = draft.trim().length > 0;
-  const highlightedParts = highlightNames(composedValue, allPeople);
+  const highlightedParts = highlightNames(draft, allPeople);
 
   return (
     <motion.main
@@ -347,24 +243,44 @@ export default function Home() {
         </svg>
       </button>
 
-      {/* Date hero — the visual centerpiece */}
+      {/* Greeting — pulled from settings. Falls back to no greeting line if
+          the user hasn't set a name yet. */}
+      {userName && (
+        <div
+          className="absolute inset-x-0 text-center italic"
+          style={{
+            top: 116,
+            fontFamily: 'Georgia, serif',
+            fontSize: 16,
+            fontWeight: 400,
+            lineHeight: 1.2,
+            color: '#5A5347',
+          }}
+        >
+          Hi, {userName}
+        </div>
+      )}
+
+      {/* Date hero — the visual centerpiece. Full date with year. */}
       <div
         className="absolute inset-x-0 text-center italic"
         style={{
-          top: 150,
+          top: userName ? 146 : 156,
           fontFamily: 'Georgia, serif',
-          fontSize: 32,
+          fontSize: 26,
           fontWeight: 500,
-          lineHeight: 1.1,
+          lineHeight: 1.2,
           color: INK,
           letterSpacing: '-0.005em',
+          paddingLeft: 16,
+          paddingRight: 16,
         }}
       >
         {formatDate()}
       </div>
 
       {/* Writing area */}
-      <div className="absolute" style={{ left: 16, right: 16, top: 286 }}>
+      <div className="absolute" style={{ left: 16, right: 16, top: 290 }}>
         {/* The textarea and a name-highlight overlay layered together. The
             textarea carries the caret + handles input; the overlay renders
             the same text with known names wrapped in coral. Both share
@@ -386,16 +302,15 @@ export default function Home() {
               wordWrap: 'break-word',
             }}
           >
-            {composedValue ? highlightedParts : <>&#8203;</>}
+            {draft ? highlightedParts : <>&#8203;</>}
           </div>
           <textarea
             ref={textareaRef}
-            value={composedValue}
+            value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleInputKeyDown}
             autoFocus
             rows={1}
-            readOnly={recording}
             className="italic"
             style={{
               position: 'relative',
@@ -417,7 +332,7 @@ export default function Home() {
               WebkitTextFillColor: 'transparent',
             }}
           />
-          {!composedValue && (
+          {!draft && (
             <span
               className="italic pointer-events-none"
               style={{
@@ -448,26 +363,29 @@ export default function Home() {
           )}
         </div>
 
-        {/* Hairline sits directly under the writing line so the placeholder
-            text reads as if written on the line. */}
+        {/* Hairline directly under the writing line — narrower than the
+            writing area so it reads as an accent underline, not a divider. */}
         <div
           style={{
             marginTop: 12,
-            width: '100%',
+            marginLeft: 'auto',
+            marginRight: 'auto',
+            width: '80%',
             height: 0.7,
             background: TAN,
             opacity: 0.55,
           }}
         />
 
-        {/* Action row — mic toggle + send. Mic = icon. Send = mono coral label. */}
+        {/* Action row — mic = navigate to /chat in voice mode. Send appears
+            once there's typed text and navigates to /chat with the seed. */}
         <div
           className="mt-4 flex items-center justify-end"
           style={{ gap: 18 }}
         >
           <button
-            onClick={handleVoiceToggle}
-            aria-label={recording ? 'Stop voice' : 'Start voice'}
+            onClick={enterVoiceMode}
+            aria-label="Start voice conversation"
             style={{
               width: 24,
               height: 24,
@@ -477,10 +395,10 @@ export default function Home() {
             }}
           >
             <svg width="24" height="24" viewBox="0 0 24 24">
-              <rect x={11.2} y={9} width="1.6" height="6" rx="0.8" fill={recording ? CORAL : TAN} />
-              <rect x={11.2 - 4} y={7} width="1.6" height="10" rx="0.8" fill={recording ? CORAL : TAN} />
-              <rect x={11.2 + 4} y={7} width="1.6" height="10" rx="0.8" fill={recording ? CORAL : TAN} />
-              <rect x={11.2 + 8} y={9} width="1.6" height="6" rx="0.8" fill={recording ? CORAL : TAN} />
+              <rect x={11.2} y={9} width="1.6" height="6" rx="0.8" fill={TAN} />
+              <rect x={11.2 - 4} y={7} width="1.6" height="10" rx="0.8" fill={TAN} />
+              <rect x={11.2 + 4} y={7} width="1.6" height="10" rx="0.8" fill={TAN} />
+              <rect x={11.2 + 8} y={9} width="1.6" height="6" rx="0.8" fill={TAN} />
             </svg>
           </button>
           {hasText && (

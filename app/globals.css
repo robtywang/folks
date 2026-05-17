@@ -136,6 +136,22 @@ body {
   50.01%, 100% { opacity: 0; }
 }
 
+/* Three-dot loading / ready indicator in chat. Each dot stagger via
+   animation-delay so they pulse in a wave. */
+@keyframes folks-dot-pulse {
+  0%, 70%, 100% { opacity: 0.22; transform: translateY(0); }
+  35% { opacity: 0.9; transform: translateY(-1px); }
+}
+
+.folks-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: folks-dot-pulse 1.25s ease-in-out infinite;
+}
+
 .recording-caret {
   display: inline-block;
   width: 2px;
@@ -242,15 +258,9 @@ body {
   box-sizing: border-box;
 }
 
-.phone-frame::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image: radial-gradient(circle at 1px 1px, rgba(31, 26, 20, 0.025) 1px, transparent 0);
-  background-size: 3px 3px;
-  z-index: 0;
-}
+/* The dotted texture pseudo was removed — the cream background is now flat
+   across all surfaces (home, chat, journal) so the visual heading area
+   matches the body. */
 
 .phone-frame > * {
   position: relative;

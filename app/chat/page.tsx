@@ -28,11 +28,12 @@ function uid(): string {
 }
 
 function formatToday(): string {
-  const monthDay = new Date().toLocaleDateString('en-US', {
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
     month: 'long',
     day: 'numeric',
+    year: 'numeric',
   });
-  return `Today · ${monthDay}`;
 }
 
 const DAY_MS = 86_400_000;
@@ -72,6 +73,7 @@ function ChatScreenInner() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentDraft, setCurrentDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [awaitingFolks, setAwaitingFolks] = useState(false);
   // The person this chat is "about" — established from the first mentioned
   // name in any user message and carried forward so pronouns resolve. Updated
   // when a later user message explicitly names a different person.
@@ -173,6 +175,7 @@ function ChatScreenInner() {
               createdAt: Date.now(),
             },
           ]);
+          setAwaitingFolks(false);
           return;
         }
         const data = (await res.json()) as { content?: string };
@@ -182,8 +185,10 @@ function ChatScreenInner() {
             { id: uid(), role: 'folks', text: data.content!, createdAt: Date.now() },
           ]);
         }
+        setAwaitingFolks(false);
       } catch (err) {
         console.warn('folks-says failed:', err);
+        setAwaitingFolks(false);
       }
     },
     [findMentionedPerson, allPeople]
@@ -214,6 +219,7 @@ function ChatScreenInner() {
         ];
         // Use the snapshot AT commit time as priorMessages — includes the
         // just-added user message so the AI sees the full conversation.
+        setAwaitingFolks(true);
         void fireFolksSays(trimmed, next, nextActive);
         return next;
       });
@@ -533,18 +539,25 @@ function ChatScreenInner() {
               .some((later) => later.role === 'user');
             return <FolksMessage key={m.id} text={m.text} stale={stale} />;
           })}
+          {/* Typing indicator — three dots in folks-row position, shown
+              between user commit and folks response landing. */}
+          {awaitingFolks && <FolksTypingDots />}
         </div>
 
-        {/* Active writing area — slides in below the latest content */}
-        <ActiveWritingArea
-          value={currentDraft}
-          onChange={handleDraftChange}
-          onKeyDown={handleKeyDown}
-          onSend={() => {
-            if (debounceTimer.current) clearTimeout(debounceTimer.current);
-            commitDraft(currentDraft);
-          }}
-        />
+        {/* Active writing area — text mode only. Voice mode owns the bottom
+            of the screen via the "listening" pill in the top-right. */}
+        {!voiceMode && (
+          <ActiveWritingArea
+            value={currentDraft}
+            onChange={handleDraftChange}
+            onKeyDown={handleKeyDown}
+            onSend={() => {
+              if (debounceTimer.current) clearTimeout(debounceTimer.current);
+              commitDraft(currentDraft);
+            }}
+            showReadyDots={messages.length === 0}
+          />
+        )}
       </div>
 
       {/* Send-to-journal pill */}
@@ -750,16 +763,47 @@ function FolksMessage({ text, stale }: { text: string; stale: boolean }) {
   );
 }
 
+/** Three-dot typing indicator in the folks message slot. */
+function FolksTypingDots() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18 }}
+    >
+      <div
+        style={{
+          fontFamily: FONT_MONO,
+          fontSize: 9,
+          letterSpacing: 1,
+          color: TAN,
+          textTransform: 'lowercase',
+          marginBottom: 6,
+        }}
+      >
+        — folks
+      </div>
+      <div style={{ display: 'flex', gap: 5, alignItems: 'center', color: INK_MUTED }}>
+        <span className="folks-dot" style={{ animationDelay: '0s' }} />
+        <span className="folks-dot" style={{ animationDelay: '0.18s' }} />
+        <span className="folks-dot" style={{ animationDelay: '0.36s' }} />
+      </div>
+    </motion.div>
+  );
+}
+
 function ActiveWritingArea({
   value,
   onChange,
   onKeyDown,
   onSend,
+  showReadyDots = false,
 }: {
   value: string;
   onChange: (s: string) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void;
+  showReadyDots?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow so the box extends downward as text wraps.
@@ -810,22 +854,28 @@ function ActiveWritingArea({
             lineHeight: '24px',
           }}
         />
-        {/* Visible blinking caret when the field is empty — covers mobile
-            browsers where the native caret only renders after user tap. */}
-        {!value && (
-          <span
+        {/* Ready indicator — three pulsing dots in the empty writing area
+            (only on the very first turn, when there are no messages yet).
+            Reads as "ready when you are" without confusing it with a typing
+            cursor. Pointer-events: none so taps still focus the textarea. */}
+        {!value && showReadyDots && (
+          <div
             aria-hidden="true"
             style={{
               position: 'absolute',
-              left: 0,
-              top: 4,
-              width: 1.5,
-              height: 18,
-              background: INK,
-              animation: 'blink-caret 1.05s steps(1) infinite',
+              left: 1,
+              top: 8,
+              display: 'flex',
+              gap: 5,
+              alignItems: 'center',
+              color: TAN,
               pointerEvents: 'none',
             }}
-          />
+          >
+            <span className="folks-dot" style={{ animationDelay: '0s' }} />
+            <span className="folks-dot" style={{ animationDelay: '0.18s' }} />
+            <span className="folks-dot" style={{ animationDelay: '0.36s' }} />
+          </div>
         )}
       </div>
       {/* Send button — explicit prompt-the-AI affordance for mobile, where

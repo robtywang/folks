@@ -150,6 +150,9 @@ function renderBody(
     const matched = m[0];
     const id = nameMap.get(matched.toLowerCase());
     if (id) {
+      // Nest the search-chip highlighter inside the name link so a search
+      // for "kat" still highlights inside a Kate link, instead of being
+      // swallowed by the name-link path.
       out.push(
         <Link
           key={`n${key++}`}
@@ -157,7 +160,7 @@ function renderBody(
           className="folks-name-link"
           style={NAME_LINK_STYLE}
         >
-          {matched}
+          {highlightSearch(matched, query)}
         </Link>
       );
     } else {
@@ -416,20 +419,33 @@ function JournalEntry({
   allPeople: Person[];
   query: string;
 }) {
-  const [mode, setMode] = useState<'rest' | 'edit' | 'confirm-delete'>('rest');
+  const [mode, setMode] = useState<'rest' | 'edit'>('rest');
   const [draft, setDraft] = useState(entry.text);
   const [newPersonInput, setNewPersonInput] = useState('');
   const [busy, setBusy] = useState(false);
+  // Two-tap delete inside the editor: first tap arms the button, second
+  // confirms. Resets after 3 seconds if the user doesn't follow through.
+  const [deleteArmed, setDeleteArmed] = useState(false);
 
   function startEdit() {
     setDraft(entry.text);
     setNewPersonInput('');
+    setDeleteArmed(false);
     setMode('edit');
   }
   function cancelEdit() {
     setMode('rest');
     setDraft(entry.text);
     setNewPersonInput('');
+    setDeleteArmed(false);
+  }
+  function handleDeleteTap() {
+    if (deleteArmed) {
+      void handleDelete();
+      return;
+    }
+    setDeleteArmed(true);
+    setTimeout(() => setDeleteArmed(false), 3000);
   }
   async function saveText() {
     if (!draft.trim() || draft === entry.text) {
@@ -476,9 +492,8 @@ function JournalEntry({
 
   return (
     <div>
-      {/* Header row: timestamp left, icons right. No name header anymore —
-          the name is highlighted inline inside the body below. */}
-      <div className="flex items-baseline justify-between gap-3">
+      {/* Header row: just the timestamp. Tap the body to edit. */}
+      <div className="flex items-baseline gap-3">
         <span
           style={{
             fontFamily: 'var(--font-mono)',
@@ -491,27 +506,6 @@ function JournalEntry({
         >
           {shortTime(entry.createdAt)}
         </span>
-        {mode === 'rest' && (
-          <div
-            className="flex flex-shrink-0 items-center gap-3"
-            style={{ opacity: 0.4 }}
-          >
-            <button
-              onClick={startEdit}
-              aria-label="Edit entry"
-              className="text-ink-primary transition-opacity hover:opacity-100"
-            >
-              <i className="ti ti-pencil" style={{ fontSize: 13 }} />
-            </button>
-            <button
-              onClick={() => setMode('confirm-delete')}
-              aria-label="Delete entry"
-              className="text-ink-primary transition-opacity hover:opacity-100"
-            >
-              <i className="ti ti-trash" style={{ fontSize: 13 }} />
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Body */}
@@ -615,74 +609,71 @@ function JournalEntry({
 
           </div>
 
-          <div className="mt-3 flex items-center justify-end gap-3">
+          <div className="mt-4 flex items-center justify-between gap-3">
+            {/* Delete is bottom-left, under the attribute-to section.
+                First tap arms it, second tap confirms. Resets after 3s. */}
             <button
-              onClick={cancelEdit}
+              onClick={handleDeleteTap}
               disabled={busy}
-              className="text-[11px] uppercase tracking-widest text-ink-secondary"
-              style={{ fontFamily: 'var(--font-mono)' }}
+              className="text-[11px] uppercase tracking-widest disabled:opacity-40"
+              style={{
+                fontFamily: 'var(--font-mono)',
+                color: deleteArmed ? 'var(--accent-coral)' : 'var(--ink-tertiary)',
+              }}
             >
-              cancel
+              {deleteArmed ? 'confirm delete' : 'delete entry'}
             </button>
-            <button
-              onClick={saveText}
-              disabled={busy || !draft.trim()}
-              className="text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-40"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            >
-              {busy ? 'saving…' : 'save text →'}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={cancelEdit}
+                disabled={busy}
+                className="text-[11px] uppercase tracking-widest text-ink-secondary"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                cancel
+              </button>
+              <button
+                onClick={saveText}
+                disabled={busy || !draft.trim()}
+                className="text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-40"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                {busy ? 'saving…' : 'save text →'}
+              </button>
+            </div>
           </div>
         </div>
       ) : (
-        <p
-          style={{
-            marginTop: 6,
-            fontFamily: 'var(--font-fraunces)',
-            fontSize: 14,
-            fontStyle: 'italic',
-            lineHeight: 1.5,
-            color: 'var(--ink-primary)',
-          }}
-        >
-          {renderBody(entry.text, nameMap, query)}
-        </p>
-      )}
-
-      {mode === 'confirm-delete' && (
+        // Rest-state body: tap anywhere on the text to open the editor.
+        // Inline coral name links inside still navigate; their onClick
+        // stops propagation via Next.js Link default behavior on tap.
         <div
-          className="mt-2 flex items-center justify-between gap-3 rounded-md px-3 py-2"
-          style={{
-            background: 'rgba(200, 85, 61, 0.08)',
-            borderLeft: '2px solid var(--accent-coral)',
+          onClick={startEdit}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              startEdit();
+            }
           }}
+          style={{ cursor: 'text' }}
         >
-          <span
-            className="text-[12px] italic text-ink-primary"
-            style={{ fontFamily: 'var(--font-fraunces)' }}
+          <p
+            style={{
+              marginTop: 6,
+              fontFamily: 'var(--font-fraunces)',
+              fontSize: 14,
+              fontStyle: 'italic',
+              lineHeight: 1.5,
+              color: 'var(--ink-primary)',
+            }}
           >
-            delete this entry?
-          </span>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setMode('rest')}
-              disabled={busy}
-              className="text-[11px] uppercase tracking-widest text-ink-secondary"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            >
-              cancel
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={busy}
-              className="text-[11px] uppercase tracking-widest text-accent-coral disabled:opacity-40"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            >
-              {busy ? 'deleting…' : 'delete'}
-            </button>
-          </div>
+            {renderBody(entry.text, nameMap, query)}
+          </p>
         </div>
       )}
+
     </div>
   );
 }
