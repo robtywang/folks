@@ -306,25 +306,61 @@ export default function Home() {
         folks
       </div>
 
-      {/* "your folks" — italic wordmark top-left, balances the journal icon
-          on the right. Opens the per-friend list. */}
+      {/* "your folks" — two-person symbol top-left, balances the journal
+          icon on the right. Opens the per-friend list. */}
       <button
         onClick={() => router.push('/folks')}
         aria-label="Open your folks list"
-        className="absolute italic"
+        className="absolute"
         style={{
           left: 18,
           top: 12,
-          fontFamily: 'Georgia, serif',
-          fontSize: 13,
-          color: TAN,
+          width: 20,
+          height: 18,
           background: 'transparent',
           border: 'none',
-          lineHeight: 1,
           padding: 0,
         }}
       >
-        your folks
+        <svg width="20" height="18" viewBox="0 0 20 18">
+          {/* left person — head + shoulders */}
+          <circle cx="6" cy="5" r="2.3" fill="none" stroke={TAN} strokeWidth="1.2" />
+          <path
+            d="M1.4 16 Q1.4 10 6 10 Q10.6 10 10.6 16"
+            fill="none"
+            stroke={TAN}
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+          {/* right person — slightly offset */}
+          <circle cx="14" cy="5.5" r="2.1" fill="none" stroke={TAN} strokeWidth="1.2" />
+          <path
+            d="M9.6 15.5 Q9.6 10.2 14 10.2 Q18.4 10.2 18.4 15.5"
+            fill="none"
+            stroke={TAN}
+            strokeWidth="1.2"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+
+      {/* Settings — gear inside the top-right cluster, paired with journal */}
+      <button
+        onClick={() => router.push('/settings')}
+        aria-label="Open settings"
+        className="absolute text-ink-tertiary"
+        style={{
+          right: 46,
+          top: 13,
+          width: 18,
+          height: 18,
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          color: TAN,
+        }}
+      >
+        <i className="ti ti-settings" style={{ fontSize: 16 }} />
       </button>
 
       {/* Journal — small notebook icon top-right */}
