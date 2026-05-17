@@ -10,89 +10,11 @@ import { recomputeAll } from '@/lib/closeness';
 import { expireOldPrompts } from '@/lib/prompts';
 import { hasLockPin } from '@/lib/lock';
 import { ALL_PROMPTS } from '@/lib/session-prompts';
+import { ListeningBars } from '@/components/listening-bars';
 import type { Person } from '@/types';
 
 const LEGACY_ONBOARDED_KEY = 'folks_onboarded';
 const STEP4_SESSION_KEY = 'folks_onboarding_step_4';
-
-/**
- * Animated audio-bars graphic shown next to "listening…" while the mic
- * is recording. Four coral bars scaling vertically at different speeds
- * and phases — reads as an active audio meter, not a static icon.
- */
-function ListeningBars() {
-  const CORAL = '#C8553D';
-  return (
-    <>
-      <style jsx>{`
-        @keyframes folks-bar-pulse-a {
-          0%, 100% { transform: scaleY(0.35); }
-          50% { transform: scaleY(1); }
-        }
-        @keyframes folks-bar-pulse-b {
-          0%, 100% { transform: scaleY(0.55); }
-          30% { transform: scaleY(1); }
-          70% { transform: scaleY(0.4); }
-        }
-        @keyframes folks-bar-pulse-c {
-          0%, 100% { transform: scaleY(0.5); }
-          25% { transform: scaleY(0.95); }
-          60% { transform: scaleY(0.3); }
-        }
-        @keyframes folks-bar-pulse-d {
-          0%, 100% { transform: scaleY(0.4); }
-          50% { transform: scaleY(0.85); }
-        }
-        .listening-bar {
-          transform-origin: center;
-          transform-box: fill-box;
-        }
-        .listening-bar.a { animation: folks-bar-pulse-a 0.7s ease-in-out infinite; }
-        .listening-bar.b { animation: folks-bar-pulse-b 0.55s ease-in-out infinite; }
-        .listening-bar.c { animation: folks-bar-pulse-c 0.85s ease-in-out infinite; }
-        .listening-bar.d { animation: folks-bar-pulse-d 0.65s ease-in-out infinite; }
-      `}</style>
-      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
-        <rect
-          className="listening-bar a"
-          x={14.2 - 9}
-          y={7.5}
-          width="1.8"
-          height="15"
-          rx="0.9"
-          fill={CORAL}
-        />
-        <rect
-          className="listening-bar b"
-          x={14.2 - 4}
-          y={7.5}
-          width="1.8"
-          height="15"
-          rx="0.9"
-          fill={CORAL}
-        />
-        <rect
-          className="listening-bar c"
-          x={14.2 + 1}
-          y={7.5}
-          width="1.8"
-          height="15"
-          rx="0.9"
-          fill={CORAL}
-        />
-        <rect
-          className="listening-bar d"
-          x={14.2 + 6}
-          y={7.5}
-          width="1.8"
-          height="15"
-          rx="0.9"
-          fill={CORAL}
-        />
-      </svg>
-    </>
-  );
-}
 
 function formatDate(): string {
   return new Date().toLocaleDateString('en-US', {
@@ -370,8 +292,11 @@ export default function Home() {
       transition={{ duration: 0.2 }}
       className="relative h-full w-full overflow-hidden"
     >
-      {/* Wordmark — bigger, hugs the Dynamic Island */}
-      <div
+      {/* Wordmark — bigger, hugs the Dynamic Island. Stagger entrance. */}
+      <motion.div
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.05, ease: 'easeOut' }}
         className="absolute inset-x-0 text-center italic"
         style={{
           top: 8,
@@ -383,11 +308,14 @@ export default function Home() {
         }}
       >
         folks
-      </div>
+      </motion.div>
 
       {/* "your folks" — two-person symbol top-left, balances the journal
           icon on the right. Opens the per-friend list. */}
-      <button
+      <motion.button
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.15, ease: 'easeOut' }}
         onClick={() => router.push('/folks')}
         aria-label="Open your folks list"
         className="absolute"
@@ -421,11 +349,14 @@ export default function Home() {
             strokeLinecap="round"
           />
         </svg>
-      </button>
+      </motion.button>
 
       {/* Settings — gear top-right, alone. Matches the journal-page header
           treatment: ink-secondary color, 18px Tabler glyph. */}
-      <button
+      <motion.button
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.15, ease: 'easeOut' }}
         onClick={() => router.push('/settings')}
         aria-label="Open settings"
         className="absolute text-ink-secondary transition-colors hover:text-ink-primary"
@@ -440,10 +371,13 @@ export default function Home() {
         }}
       >
         <i className="ti ti-settings" style={{ fontSize: 18 }} />
-      </button>
+      </motion.button>
 
       {/* Date hero — moved higher to sit closer to the wordmark. */}
-      <div
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.25, ease: 'easeOut' }}
         className="absolute inset-x-0 text-center italic"
         style={{
           top: 92,
@@ -458,13 +392,16 @@ export default function Home() {
         }}
       >
         {formatDate()}
-      </div>
+      </motion.div>
 
       {/* Greeting sits just above the writing area, anchored to the input
           rather than the page header so it reads as "hi, [you] — write
           something." */}
       {userName && (
-        <div
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, delay: 0.4, ease: 'easeOut' }}
           className="absolute italic"
           style={{
             left: 16,
@@ -478,11 +415,17 @@ export default function Home() {
           }}
         >
           Hi, {userName}
-        </div>
+        </motion.div>
       )}
 
       {/* Writing area */}
-      <div className="absolute" style={{ left: 16, right: 16, top: 280 }}>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.5, ease: 'easeOut' }}
+        className="absolute"
+        style={{ left: 16, right: 16, top: 280 }}
+      >
         {/* The textarea and a name-highlight overlay layered together. The
             textarea carries the caret + handles input; the overlay renders
             the same text with known names wrapped in coral. Both share
@@ -650,12 +593,15 @@ export default function Home() {
             </button>
           )}
         </div>
-      </div>
+      </motion.div>
 
       {/* Bottom CTA — "your journal" graphic. Subtle open-book SVG with an
           italic label. Tappable hit-area is the whole row. Sits anchored
           near the bottom of the home page as the canonical entry point. */}
-      <button
+      <motion.button
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 0.7, ease: 'easeOut' }}
         onClick={() => router.push('/journal')}
         aria-label="Open your journal"
         className="absolute active:opacity-70 transition-opacity"
@@ -710,7 +656,7 @@ export default function Home() {
         >
           enter your journal →
         </span>
-      </button>
+      </motion.button>
     </motion.main>
   );
 }

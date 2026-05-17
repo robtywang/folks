@@ -14,6 +14,7 @@ import { motion } from 'framer-motion';
 import { db, findPersonByName, createPerson } from '@/lib/db';
 import { parseEntry } from '@/lib/ai';
 import { saveEntry } from '@/lib/save-entry';
+import { ListeningBars } from '@/components/listening-bars';
 import type { Entry, Person } from '@/types';
 
 interface ChatMessage {
@@ -580,7 +581,9 @@ function ChatScreenInner() {
       console.error('send-to-journal failed:', err);
     } finally {
       setSending(false);
-      router.push('/');
+      // Land on /journal so the user sees their entry at the top of the
+      // log immediately after saving.
+      router.push('/journal');
     }
   }
 
@@ -597,7 +600,10 @@ function ChatScreenInner() {
       className="relative h-full w-full overflow-hidden"
     >
       {/* X cancel — high + left, mirrors home's notebook icon corner */}
-      <button
+      <motion.button
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.1, ease: 'easeOut' }}
         onClick={handleCancel}
         aria-label="Cancel"
         className="absolute"
@@ -615,11 +621,14 @@ function ChatScreenInner() {
           <line x1="1" y1="1" x2="13" y2="13" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
           <line x1="13" y1="1" x2="1" y2="13" stroke={TAN} strokeWidth="1.4" strokeLinecap="round" />
         </svg>
-      </button>
+      </motion.button>
 
       {/* Date hero — same role as home's date, slightly smaller so the chat
           content gets more breathing room. Sits high under the dynamic island. */}
-      <div
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.55, delay: 0.2, ease: 'easeOut' }}
         className="absolute inset-x-0 text-center italic"
         style={{
           top: 30,
@@ -632,7 +641,7 @@ function ChatScreenInner() {
         }}
       >
         {formatToday()}
-      </div>
+      </motion.div>
 
 
       {/* Scrollable content area + writing area at the bottom */}
@@ -1019,12 +1028,16 @@ function ActiveWritingArea({
             padding: 0,
           }}
         >
-          <svg width="26" height="26" viewBox="0 0 26 26">
-            <rect x={12.2} y={9} width="1.6" height="8" rx="0.8" fill={recording ? CORAL : TAN} />
-            <rect x={12.2 - 4.5} y={6.5} width="1.6" height="13" rx="0.8" fill={recording ? CORAL : TAN} />
-            <rect x={12.2 + 4.5} y={6.5} width="1.6" height="13" rx="0.8" fill={recording ? CORAL : TAN} />
-            <rect x={12.2 + 9} y={9} width="1.6" height="8" rx="0.8" fill={recording ? CORAL : TAN} />
-          </svg>
+          {recording ? (
+            <ListeningBars size={26} />
+          ) : (
+            <svg width="26" height="26" viewBox="0 0 26 26">
+              <rect x={12.2} y={9} width="1.6" height="8" rx="0.8" fill={TAN} />
+              <rect x={12.2 - 4.5} y={6.5} width="1.6" height="13" rx="0.8" fill={TAN} />
+              <rect x={12.2 + 4.5} y={6.5} width="1.6" height="13" rx="0.8" fill={TAN} />
+              <rect x={12.2 + 9} y={9} width="1.6" height="8" rx="0.8" fill={TAN} />
+            </svg>
+          )}
           <span
             className="text-[12px] italic"
             style={{
