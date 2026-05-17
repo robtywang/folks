@@ -46,25 +46,31 @@ export default function OnboardingStep4() {
           and tells you.
         </h1>
 
-        {/* Three staggered friend rows */}
+        {/* Four staggered friend rows */}
         <div className="mt-6">
           <FriendRow
-            monogram="K"
-            name="Kate"
+            monogram="E"
+            name="Elon"
             caption="HEAVY · 10 ENTRIES"
             animationDelay="400ms"
           />
           <FriendRow
-            monogram="M"
-            name="Mom"
-            caption="HEAVY · 4 ENTRIES"
-            animationDelay="700ms"
+            monogram="J"
+            name="Jamie"
+            caption="WARM · 6 ENTRIES"
+            animationDelay="650ms"
           />
           <FriendRow
-            monogram="D"
-            name="Daniel"
-            caption="WARM · 6 ENTRIES"
-            animationDelay="1000ms"
+            monogram="M"
+            name="Mom"
+            caption="MIXED · 4 ENTRIES"
+            animationDelay="900ms"
+          />
+          <FriendRow
+            monogram="K"
+            name="Katherine"
+            caption="HEAVY · 8 ENTRIES"
+            animationDelay="1150ms"
           />
         </div>
 
@@ -73,7 +79,7 @@ export default function OnboardingStep4() {
         <div
           className="onboarding-fade-in mt-6 rounded-md"
           style={{
-            animationDelay: '1600ms',
+            animationDelay: '1750ms',
             animationFillMode: 'both',
             background: 'rgba(79, 160, 64, 0.07)',
             borderLeft: '2px solid var(--accent-sage)',
@@ -89,7 +95,7 @@ export default function OnboardingStep4() {
               color: 'var(--ink-secondary)',
             }}
           >
-            FOLKS&apos;S READ ON KATE
+            FOLKS&apos;S READ ON ELON
           </span>
           <p
             className="mt-2 italic"
@@ -100,8 +106,8 @@ export default function OnboardingStep4() {
               color: 'var(--ink-primary)',
             }}
           >
-            she reaches out in small emergencies and then turns cold in the
-            room. most days with her end in some quiet form of hurt.
+            he texts in small emergencies and goes cold once you&apos;re in the
+            room. most evenings with him end in some quiet form of hurt.
           </p>
         </div>
       </div>

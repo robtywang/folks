@@ -1,21 +1,43 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+
+const EXAMPLES = [
+  "elon's been weird since the breakup. don't know if he wants space or wants me to ask.",
+  'jamie cancelled again. third time this month. wondering if it’s me.',
+  "mom called crying about dad. didn’t know what to say.",
+  'katherine remembered my interview today. the small stuff is starting to stack up.',
+];
+
+const TYPE_MS = 3500;
+const HOLD_MS = 1700;
+const CYCLE_MS = TYPE_MS + HOLD_MS;
+
+const TAN = '#B4A689';
+const CORAL = '#C8553D';
+const INK_MUTED = '#5A5347';
+
 /**
  * Demo for onboarding screen 3 — mirrors the actual compose surface used
- * on home + chat (no card chrome, just a textarea-style line on cream
- * background with a hairline below and the mic / send action row beneath).
- *
- * The text appears character-by-character via a CSS `width` keyframe (no
- * JS timers), with a blinking caret reusing the existing `blink-caret`
- * keyframe from globals.css. The action row reuses the real shipped
- * styling: 4-bar mic SVG + "tap to speak" italic label on the left,
- * "send →" mono coral label on the right.
+ * on home + chat (borderless, hairline below, mic + send action row).
+ * Cycles through four longer vent examples using sample names (Elon,
+ * Jamie, Mom, Katherine). Each example types in (one step per character
+ * via a CSS keyframe), holds, then the next example replaces it via a
+ * remount-triggered re-animation.
  */
 export function TypingDemo() {
-  const sentence = 'had coffee with kate. felt weird.';
-  const TAN = '#B4A689';
-  const CORAL = '#C8553D';
-  const INK_MUTED = '#5A5347';
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setIdx((i) => (i + 1) % EXAMPLES.length);
+    }, CYCLE_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const sentence = EXAMPLES[idx]!;
+  const stepCount = Math.max(20, sentence.length);
+  const typeDuration = TYPE_MS / 1000;
 
   return (
     <>
@@ -24,7 +46,6 @@ export function TypingDemo() {
           0% {
             width: 0;
           }
-          60%,
           100% {
             width: 100%;
           }
@@ -34,7 +55,6 @@ export function TypingDemo() {
           overflow: hidden;
           white-space: nowrap;
           vertical-align: bottom;
-          animation: folks-onboarding-type 3s steps(33, end) infinite;
           max-width: 100%;
         }
       `}</style>
@@ -52,7 +72,17 @@ export function TypingDemo() {
           minHeight: 24,
         }}
       >
-        <span className="folks-type-line">{sentence}</span>
+        {/* key={idx} forces remount so the typing animation restarts on
+            each example. animation runs once (forwards fill) per example. */}
+        <span
+          key={idx}
+          className="folks-type-line"
+          style={{
+            animation: `folks-onboarding-type ${typeDuration}s steps(${stepCount}, end) forwards`,
+          }}
+        >
+          {sentence}
+        </span>
         <span
           aria-hidden="true"
           style={{
@@ -76,9 +106,8 @@ export function TypingDemo() {
         }}
       />
 
-      {/* Action row — exact shape of the real shipped one: 4-bar mic +
-          "tap to speak" italic on the left, "send →" mono coral on the
-          right. Static (this is a demo, no interactions). */}
+      {/* Action row — mirrors the shipped one: 4-bar mic + "tap to speak"
+          on the left, "send →" mono coral on the right. */}
       <div
         className="mt-3 flex items-center justify-between"
         style={{ gap: 18 }}
