@@ -260,10 +260,10 @@ function ChatScreenInner() {
     [fireFolksSays, findMentionedPerson, activePersonId]
   );
 
-  // Seed handling — one-shot. Before commitDraft, run parseEntry to pull
-  // out the person + lazy-create them as a transient Person record. This
-  // way the AI context survives across chats even when the user never
-  // explicitly hits "send to journal."
+  // Seed handling — render the seed message INSTANTLY on mount, then run
+  // parse + folks-says in the background. Previously the user landed on a
+  // blank-looking chat for a beat while parse ran; now their first thought
+  // is on screen immediately and "folks is thinking" dots appear underneath.
   useEffect(() => {
     if (seededRef.current) return;
     if (!seed) {
@@ -271,25 +271,53 @@ function ChatScreenInner() {
       return;
     }
     seededRef.current = true;
+    const trimmed = seed.trim();
+    if (!trimmed) return;
+
+    const userMsg: ChatMessage = {
+      id: uid(),
+      role: 'user',
+      text: trimmed,
+      createdAt: Date.now(),
+    };
+    // Show the seed immediately — no waiting.
+    setMessages([userMsg]);
+    setAwaitingFolks(true);
+
+    // In the background: discover/persist the person + fire folks-says.
     (async () => {
-      try {
-        const { parsed } = await parseEntry(seed);
-        if (
-          parsed.primary_person &&
-          parsed.confidence >= 0.6 &&
-          !parsed.is_solo
-        ) {
-          const existing = await findPersonByName(parsed.primary_person);
-          if (!existing) {
-            await createPerson(parsed.primary_person, { isTransient: true });
+      let activeId: string | null = null;
+      // First, check if any known person matches via local scan.
+      const localMatch = findMentionedPerson(trimmed);
+      if (localMatch) {
+        activeId = localMatch.id;
+        setActivePersonId(localMatch.id);
+      } else {
+        try {
+          const { parsed } = await parseEntry(trimmed);
+          if (
+            parsed.primary_person &&
+            parsed.confidence >= 0.6 &&
+            !parsed.is_solo
+          ) {
+            const existing = await findPersonByName(parsed.primary_person);
+            if (existing) {
+              activeId = existing.id;
+            } else {
+              const created = await createPerson(parsed.primary_person, {
+                isTransient: true,
+              });
+              activeId = created.id;
+            }
+            setActivePersonId(activeId);
           }
+        } catch (err) {
+          console.warn('seed parse failed:', err);
         }
-      } catch (err) {
-        console.warn('seed parse failed:', err);
       }
-      commitDraft(seed);
+      await fireFolksSays(trimmed, [userMsg], activeId);
     })();
-  }, [seed, commitDraft]);
+  }, [seed, findMentionedPerson, fireFolksSays]);
 
   // Voice as input method. Recognition is initialized ONCE per chat session
   // and then muted/unmuted on toggle — one permission prompt, one start-ding,
@@ -589,6 +617,7 @@ function ChatScreenInner() {
           onMicToggle={toggleVoice}
           recording={recording}
           showReadyDots={!awaitingFolks}
+          showActionRow={!awaitingFolks}
         />
         {/* Bottom anchor for auto-scroll to keep the most recent content in
             view when folks responds or recording state changes. */}
@@ -835,6 +864,7 @@ function ActiveWritingArea({
   onMicToggle,
   recording,
   showReadyDots = true,
+  showActionRow = true,
 }: {
   value: string;
   onChange: (s: string) => void;
@@ -843,6 +873,7 @@ function ActiveWritingArea({
   onMicToggle: () => void;
   recording: boolean;
   showReadyDots?: boolean;
+  showActionRow?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow so the box extends downward as text wraps.
@@ -917,7 +948,9 @@ function ActiveWritingArea({
         )}
       </div>
       {/* Action row: mic toggle on the left, send on the right when there
-          is text. Both modes (voice + text) always available. */}
+          is text. Both modes (voice + text) always available. Hidden while
+          folks is thinking so the user doesn't try to add more mid-reply. */}
+      {showActionRow && (
       <div className="mt-3 flex items-center justify-between" style={{ gap: 18 }}>
         <button
           onClick={onMicToggle}
@@ -965,6 +998,7 @@ function ActiveWritingArea({
           </button>
         )}
       </div>
+      )}
     </motion.div>
   );
 }

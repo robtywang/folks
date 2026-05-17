@@ -1,20 +1,15 @@
 'use client';
 
 import { use, useEffect, useState } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { cadenceFor } from '@/lib/closeness';
 import { generateReading, saveReading, updatePersonContext } from '@/lib/reading';
-import {
-  maybeRefreshPrompts,
-  dismissPrompt,
-} from '@/lib/prompts';
 import { removePerson, mergePerson } from '@/lib/save-entry';
 import { hasLockPin, isUnlocked } from '@/lib/lock';
 import { LockScreen } from '@/components/lock-screen';
-import type { Entry, Person } from '@/types';
+import type { Entry } from '@/types';
 
 function monogram(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -71,7 +66,6 @@ export default function PersonProfile({
   // Reading state
   const [readingBusy, setReadingBusy] = useState(false);
   const [readingError, setReadingError] = useState<string | null>(null);
-  const [promptsBusy, setPromptsBusy] = useState(false);
   const [recalibrating, setRecalibrating] = useState(false);
   const [editingContext, setEditingContext] = useState(false);
   const [contextDraft, setContextDraft] = useState('');
@@ -89,39 +83,14 @@ export default function PersonProfile({
       db.entries.where('personId').equals(id).reverse().sortBy('createdAt'),
     [id]
   );
-  const ranked = useLiveQuery(
-    async () => {
-      const arr = await db.people
-        .filter((p) => !p.isTransient && !p.muted)
-        .toArray();
-      return arr.sort((a, b) => b.closenessScore - a.closenessScore);
-    },
-    [],
-    []
-  );
-  // Separate query for the merge picker — includes muted and transient people
-  // since those are often exactly the dupes the user wants to merge away.
+  // For the merge picker — includes muted and transient people since those
+  // are often exactly the dupes the user wants to merge away.
   const allPeople = useLiveQuery(
     async () => {
       const arr = await db.people.toArray();
       return arr.sort((a, b) => b.lastInteraction - a.lastInteraction);
     },
     [],
-    []
-  );
-  // Active prompts for this person (newest first, capped at 5).
-  const prompts = useLiveQuery(
-    async () => {
-      const all = await db.friendPrompts
-        .where('personId')
-        .equals(id)
-        .toArray();
-      return all
-        .filter((p) => p.status === 'active')
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .slice(0, 5);
-    },
-    [id],
     []
   );
 
@@ -172,17 +141,6 @@ export default function PersonProfile({
     }
   }
 
-  async function handleRefreshPrompts() {
-    setPromptsBusy(true);
-    try {
-      await maybeRefreshPrompts(id, 'manual');
-    } catch (err) {
-      console.warn('refresh prompts failed:', err);
-    } finally {
-      setPromptsBusy(false);
-    }
-  }
-
   async function handleRemovePerson() {
     setRemoving(true);
     try {
@@ -228,7 +186,7 @@ export default function PersonProfile({
   if (!person) {
     return (
       <main className="mx-auto min-h-screen w-full max-w-md px-4 pb-12 pt-6">
-        <Topbar />
+        <Topbar personName={undefined} />
         <div
           className="mt-20 text-center text-[14px] italic text-ink-tertiary"
           style={{ fontFamily: 'var(--font-fraunces)' }}
@@ -242,9 +200,19 @@ export default function PersonProfile({
   const list = entries ?? [];
   const cadence = cadenceFor(list);
 
+  // Quick sentiment summary derived from the person's avg sentiment.
+  // Drives the analytic chip under the identity header.
+  function sentimentTone(avg: number, count: number): string {
+    if (count === 0) return 'no entries yet';
+    if (avg >= 7) return 'mostly warm';
+    if (avg >= 5.5) return 'mixed, leaning warm';
+    if (avg >= 4) return 'mixed, leaning heavy';
+    return 'mostly heavy';
+  }
+
   return (
     <main className="mx-auto flex h-[100svh] w-full max-w-md flex-col overflow-hidden px-4 pt-6">
-      <Topbar />
+      <Topbar personName={person.name} />
 
       {/* Scrollable content area — page itself is locked, only this region
           moves so the topbar stays fixed in view. */}
@@ -308,6 +276,35 @@ export default function PersonProfile({
           ))}
         </div>
       )}
+
+      {/* Sentiment analytic — quick at-a-glance read on the relationship.
+          Mono uppercase row: tone · entry count · last seen. */}
+      <div
+        className="mt-4 flex flex-wrap items-center"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          letterSpacing: '0.12em',
+          textTransform: 'uppercase',
+          color: 'var(--ink-tertiary)',
+          gap: 10,
+        }}
+      >
+        <span style={{ color: 'var(--accent-coral)' }}>
+          {sentimentTone(person.avgSentiment, person.entryCount)}
+        </span>
+        <span aria-hidden="true">·</span>
+        <span>
+          {person.entryCount}{' '}
+          {person.entryCount === 1 ? 'entry' : 'entries'}
+        </span>
+        {cadence.lastInteraction !== null && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span>last {relativeDate(cadence.lastInteraction)}</span>
+          </>
+        )}
+      </div>
 
       {/* Who is X */}
       <div className="mt-8">
@@ -380,14 +377,15 @@ export default function PersonProfile({
         )}
       </div>
 
-      {/* The Reading */}
+      {/* AI's read on the relationship — the narrative companion to the
+          quantitative summary above. Generated from the entries. */}
       <div className="mt-10">
         <div className="mb-2 flex items-center justify-between gap-3">
           <span
             className="text-[10px] uppercase tracking-widest text-ink-secondary"
             style={{ fontFamily: 'var(--font-mono)' }}
           >
-            the reading
+            what folks has noticed
           </span>
           <div className="h-px flex-1" style={{ background: 'var(--border-hair)' }} />
           {recalibrating ? (
@@ -474,68 +472,7 @@ export default function PersonProfile({
       </div>
 
 
-      {/* Prompted questions — surfaced from detected patterns. Tapping a
-          question opens compose with the question above the input as context;
-          the saved entry then links back to the prompt and marks it answered. */}
-      {list.length >= 3 && (
-        <div className="mt-10">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <span
-              className="text-[10px] uppercase tracking-widest text-ink-secondary"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            >
-              questions for you
-            </span>
-            <div className="h-px flex-1" style={{ background: 'var(--border-hair)' }} />
-            <button
-              onClick={handleRefreshPrompts}
-              disabled={promptsBusy}
-              className="text-[10px] uppercase tracking-widest text-accent-coral disabled:opacity-40"
-              style={{ fontFamily: 'var(--font-mono)' }}
-            >
-              {promptsBusy ? 'thinking…' : (prompts?.length ?? 0) > 0 ? 'refresh ↻' : 'generate →'}
-            </button>
-          </div>
-          {(prompts?.length ?? 0) === 0 ? (
-            <p
-              className="text-[12px] italic text-ink-tertiary"
-              style={{ fontFamily: 'var(--font-fraunces)' }}
-            >
-              no questions yet — log a few more entries or tap generate.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {(prompts ?? []).map((p) => (
-                <li
-                  key={p.id}
-                  className="relative rounded-md py-2 pl-3 pr-8 text-[13px] italic leading-snug text-ink-primary"
-                  style={{
-                    fontFamily: 'var(--font-fraunces)',
-                    background: 'rgba(140, 126, 92, 0.06)',
-                    borderLeft: '2px solid var(--accent-coral)',
-                  }}
-                >
-                  <Link
-                    href={`/?promptId=${p.id}`}
-                    className="block transition-opacity hover:opacity-70"
-                  >
-                    {p.text}
-                  </Link>
-                  <button
-                    onClick={() => dismissPrompt(p.id)}
-                    aria-label="Dismiss question"
-                    className="absolute right-2 top-2 text-ink-tertiary transition-colors hover:text-accent-coral"
-                  >
-                    <i className="ti ti-x" style={{ fontSize: 12 }} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {/* Entry timeline — the substance */}
+      {/* Entry timeline — the heart of the friend journal */}
       <div className="mt-10">
         <div className="mb-2 flex items-center gap-3">
           <span
@@ -749,17 +686,14 @@ export default function PersonProfile({
   );
 }
 
-function Topbar() {
+function Topbar({ personName }: { personName?: string }) {
   const router = useRouter();
 
   function goBack() {
-    // Prefer router history so we land back on /journal or /ratings depending
-    // on where the user came from. Fall back to / for cold-loaded profiles
-    // (deep link, bookmark, etc.) with no in-app history.
     if (typeof window !== 'undefined' && window.history.length > 1) {
       router.back();
     } else {
-      router.push('/');
+      router.push('/journal');
     }
   }
 
@@ -772,9 +706,12 @@ function Topbar() {
       >
         <i className="ti ti-arrow-left" style={{ fontSize: 18 }} />
       </button>
-      {/* Empty centre + right spacer; back arrow stays anchored left without
-          a title competing for attention. */}
-      <span aria-hidden="true" />
+      <span
+        className="text-[15px] italic text-ink-primary"
+        style={{ fontFamily: 'var(--font-fraunces)' }}
+      >
+        {personName ? `journal about ${personName.toLowerCase()}` : 'friend journal'}
+      </span>
       <span aria-hidden="true" style={{ width: 18 }} />
     </header>
   );
