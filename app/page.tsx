@@ -15,6 +15,85 @@ import type { Person } from '@/types';
 const LEGACY_ONBOARDED_KEY = 'folks_onboarded';
 const STEP4_SESSION_KEY = 'folks_onboarding_step_4';
 
+/**
+ * Animated audio-bars graphic shown next to "listening…" while the mic
+ * is recording. Four coral bars scaling vertically at different speeds
+ * and phases — reads as an active audio meter, not a static icon.
+ */
+function ListeningBars() {
+  const CORAL = '#C8553D';
+  return (
+    <>
+      <style jsx>{`
+        @keyframes folks-bar-pulse-a {
+          0%, 100% { transform: scaleY(0.35); }
+          50% { transform: scaleY(1); }
+        }
+        @keyframes folks-bar-pulse-b {
+          0%, 100% { transform: scaleY(0.55); }
+          30% { transform: scaleY(1); }
+          70% { transform: scaleY(0.4); }
+        }
+        @keyframes folks-bar-pulse-c {
+          0%, 100% { transform: scaleY(0.5); }
+          25% { transform: scaleY(0.95); }
+          60% { transform: scaleY(0.3); }
+        }
+        @keyframes folks-bar-pulse-d {
+          0%, 100% { transform: scaleY(0.4); }
+          50% { transform: scaleY(0.85); }
+        }
+        .listening-bar {
+          transform-origin: center;
+          transform-box: fill-box;
+        }
+        .listening-bar.a { animation: folks-bar-pulse-a 0.7s ease-in-out infinite; }
+        .listening-bar.b { animation: folks-bar-pulse-b 0.55s ease-in-out infinite; }
+        .listening-bar.c { animation: folks-bar-pulse-c 0.85s ease-in-out infinite; }
+        .listening-bar.d { animation: folks-bar-pulse-d 0.65s ease-in-out infinite; }
+      `}</style>
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+        <rect
+          className="listening-bar a"
+          x={14.2 - 9}
+          y={7.5}
+          width="1.8"
+          height="15"
+          rx="0.9"
+          fill={CORAL}
+        />
+        <rect
+          className="listening-bar b"
+          x={14.2 - 4}
+          y={7.5}
+          width="1.8"
+          height="15"
+          rx="0.9"
+          fill={CORAL}
+        />
+        <rect
+          className="listening-bar c"
+          x={14.2 + 1}
+          y={7.5}
+          width="1.8"
+          height="15"
+          rx="0.9"
+          fill={CORAL}
+        />
+        <rect
+          className="listening-bar d"
+          x={14.2 + 6}
+          y={7.5}
+          width="1.8"
+          height="15"
+          rx="0.9"
+          fill={CORAL}
+        />
+      </svg>
+    </>
+  );
+}
+
 function formatDate(): string {
   return new Date().toLocaleDateString('en-US', {
     weekday: 'long',
@@ -519,12 +598,16 @@ export default function Home() {
               padding: 0,
             }}
           >
-            <svg width="30" height="30" viewBox="0 0 30 30">
-              <rect x={14.2} y={10.5} width="1.8" height="9" rx="0.9" fill={recording ? CORAL : TAN} />
-              <rect x={14.2 - 5} y={7.5} width="1.8" height="15" rx="0.9" fill={recording ? CORAL : TAN} />
-              <rect x={14.2 + 5} y={7.5} width="1.8" height="15" rx="0.9" fill={recording ? CORAL : TAN} />
-              <rect x={14.2 + 10} y={10.5} width="1.8" height="9" rx="0.9" fill={recording ? CORAL : TAN} />
-            </svg>
+            {recording ? (
+              <ListeningBars />
+            ) : (
+              <svg width="30" height="30" viewBox="0 0 30 30">
+                <rect x={14.2} y={10.5} width="1.8" height="9" rx="0.9" fill={TAN} />
+                <rect x={14.2 - 5} y={7.5} width="1.8" height="15" rx="0.9" fill={TAN} />
+                <rect x={14.2 + 5} y={7.5} width="1.8" height="15" rx="0.9" fill={TAN} />
+                <rect x={14.2 + 10} y={10.5} width="1.8" height="9" rx="0.9" fill={TAN} />
+              </svg>
+            )}
             <span
               className="text-[12px] italic"
               style={{

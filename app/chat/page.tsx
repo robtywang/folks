@@ -89,6 +89,10 @@ function ChatScreenInner() {
   // a message is sent — otherwise the previous utterance keeps getting
   // re-pasted on top of the new one.
   const voiceBufferRef = useRef('');
+  // Auto-commit on silence while in voice mode. Each result resets the
+  // timer; when it fires, the message commits without the user pressing
+  // send. Typed messages still require an explicit send button tap.
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -398,6 +402,19 @@ function ChatScreenInner() {
         setCurrentDraft(voiceBufferRef.current);
       }
       setVoiceInterim(interim);
+
+      // Voice-mode auto-commit: every speech result resets the silence
+      // timer. After ~1.6s with no new audio, commit the buffer as a user
+      // message — no manual send required. Typed messages still require
+      // an explicit tap.
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      const SILENCE_MS = 1600;
+      silenceTimerRef.current = setTimeout(() => {
+        const text = voiceBufferRef.current.trim();
+        if (text.length === 0) return;
+        if (muteRef.current) return;
+        commitDraft(text);
+      }, SILENCE_MS);
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
@@ -444,6 +461,10 @@ function ChatScreenInner() {
       muteRef.current = true;
       setRecording(false);
       setVoiceInterim('');
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
       return;
     }
     // Optimistic visual update so the listening graphic appears instantly
