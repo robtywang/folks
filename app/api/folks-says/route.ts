@@ -6,7 +6,7 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 interface FolksSaysRequest {
   /** The user's just-typed thought (chat) or just-saved entry text (compose). */
   text: string;
-  /** The person the entry/thought is about. null if none mentioned. */
+  /** The primary person whose corpus we're fetching. null if none mentioned. */
   person: {
     name: string;
     entryCount: number;
@@ -14,7 +14,7 @@ interface FolksSaysRequest {
     userContext?: string | null;
     relationship?: string | null;
   } | null;
-  /** Prior entries about this person (newest first). May be empty for a brand-new person. */
+  /** Prior entries about the primary person. May be empty if they have none. */
   entries: Array<{
     text: string;
     sentiment: number;
@@ -22,6 +22,12 @@ interface FolksSaysRequest {
     daysAgo: number;
     severity?: number;
   }>;
+  /**
+   * Every known person the user mentioned in this message — first names that
+   * resolved to existing Person records in db.people. The AI uses this list
+   * to acknowledge people by name even when only one corpus was fetched.
+   */
+  mentionedPeople?: string[];
   /** Last ~10 chat turns so the AI can resolve pronouns ("she", "he"). */
   priorMessages?: Array<{ role: 'user' | 'folks'; text: string }>;
 }
@@ -59,16 +65,10 @@ function textIsSeverity3(text: string): boolean {
   return SEVERITY_3_PATTERNS.some((p) => p.test(text));
 }
 
-function corpusHasSeverity3(
-  entries: FolksSaysRequest['entries']
-): boolean {
-  return entries.some((e) => (e.severity ?? 0) >= 3);
-}
-
 const SAFETY_TEMPLATE = `what you wrote concerns me — i'm not the right tool for this. if you're in immediate danger, call 911. for someone to talk to right now: text or call 988 (suicide & crisis lifeline). i'm always here for the smaller stuff, but this deserves a person.`;
 
 function buildPrompt(body: FolksSaysRequest): string {
-  const { text, person, entries, priorMessages } = body;
+  const { text, person, entries, priorMessages, mentionedPeople } = body;
 
   const chatTranscript =
     priorMessages && priorMessages.length > 0
@@ -79,6 +79,25 @@ function buildPrompt(body: FolksSaysRequest): string {
           )
           .join('\n')
       : '';
+
+  // Format known names the user mentioned this turn (lowercase, comma-list).
+  // Excludes the primary person (already named separately in the prompt).
+  const knownPeopleLine = (() => {
+    const names = (mentionedPeople ?? [])
+      .map((n) => n.trim())
+      .filter(Boolean)
+      .map((n) => n.toLowerCase());
+    const filtered = person
+      ? names.filter((n) => n !== person.name.trim().toLowerCase())
+      : names;
+    if (filtered.length === 0) return '';
+    if (filtered.length === 1) {
+      return `\nALSO MENTIONED (you know this person, even if you don't have much on them yet): ${filtered[0]}\n`;
+    }
+    const last = filtered[filtered.length - 1];
+    const head = filtered.slice(0, -1).join(', ');
+    return `\nALSO MENTIONED (you know these people, even if you don't have much on them yet): ${head} and ${last}\n`;
+  })();
 
   const sharedVoiceRules = `VOICE — read carefully, this is the most important part:
 - You are their close friend over text. Not a therapist. Not an analyst. Not a coach.
@@ -97,9 +116,15 @@ function buildPrompt(body: FolksSaysRequest): string {
 - Don't try to solve everything in one reply. A friend says "what did they say?" — not a five-step plan.
 - If you have nothing specific, acknowledge in one beat: "yeah, that's a lot." or "oh no."`;
 
-  // No prior corpus → first-encounter friend response.
+  // No prior journal entries → light-context friend response. Still
+  // acknowledge any known names so we never sound like "who is X?" when X
+  // already exists in the user's folks list.
   if (!person || entries.length === 0) {
-    return `You are "folks" — the user's close friend who they're texting about something going on in their life. You haven't heard about this specific person before.
+    const knownNamesNote = person
+      ? `\nYOU KNOW: ${person.name.toLowerCase()}${knownPeopleLine ? '' : ''}`
+      : '';
+    return `You are "folks" — the user's close friend who they're texting about something going on in their life. You know the people in their journal by name, but you don't have much on the person(s) they're talking about right now (few or no journaled entries yet).
+${knownNamesNote}${knownPeopleLine}
 
 ${chatTranscript ? `\nCHAT SO FAR:\n${chatTranscript}\n` : ''}
 
@@ -113,7 +138,13 @@ Return JSON only, no preamble:
 
 ${sharedVoiceRules}
 
-- Since you don't know this person yet, ask a small question or just acknowledge. Example: "ohhh who's that?" or "wait, who's [name]?" or "that sounds like a lot, what happened?"`;
+CRITICAL — handling known names with thin context:
+- NEVER ask "who is [name]?" or "who are they?" if the name appears in the "YOU KNOW" / "ALSO MENTIONED" lists above. You know the person — you just don't have much on them yet.
+- Respond like a friend who has a vague memory and wants to know more. Examples:
+    "oh nice, hanging with oliver and daniel again?"
+    "ohh kate. how's that been?"
+    "love that — coffee plans before summer? sounds good."
+- One short, casual line. Don't push for information; just be there.`;
   }
 
   // We HAVE corpus. Use it like a friend who actually remembers things.
@@ -131,7 +162,7 @@ ${sharedVoiceRules}
 
 WHAT YOU REMEMBER ABOUT ${person.name.toUpperCase()} (from their past journal entries):
 ${entryLines}
-
+${knownPeopleLine}
 ${person.userContext ? `\nWHAT THEY TOLD YOU ABOUT ${person.name.toUpperCase()}:\n"${person.userContext}"\n` : ''}
 ${chatTranscript ? `\nCHAT SO FAR:\n${chatTranscript}\n` : ''}
 
@@ -156,8 +187,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'no_text' }, { status: 400 });
     }
 
-    // Severity-3 guardrail — server-side, before any LLM call.
-    if (textIsSeverity3(body.text) || corpusHasSeverity3(body.entries ?? [])) {
+    // Severity-3 guardrail — fires only on the CURRENT user text. We don't
+    // check the journal corpus anymore because old (possibly mis-parsed)
+    // entries shouldn't trigger a safety response on a benign new message.
+    if (textIsSeverity3(body.text)) {
       const resp: FolksSaysResponse = {
         content: SAFETY_TEMPLATE,
         safety: true,

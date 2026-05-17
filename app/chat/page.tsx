@@ -116,6 +116,36 @@ function ChatScreenInner() {
   );
 
   /**
+   * Find ALL known people referenced in a message — used to tell the AI
+   * about every name the user mentioned, not just the first one. Without
+   * this, "oliver and daniel" only surfaces oliver and the AI says
+   * "who's daniel?" Returns the matched Person records, deduped.
+   */
+  const findAllMentionedPeople = useCallback(
+    (text: string): Person[] => {
+      if (!text || allPeople.length === 0) return [];
+      const lower = text.toLowerCase();
+      const out: Person[] = [];
+      const seen = new Set<string>();
+      for (const p of allPeople) {
+        if (seen.has(p.id)) continue;
+        const first = p.name.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+        if (!first) continue;
+        const re = new RegExp(
+          `\\b${first.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`,
+          'i'
+        );
+        if (re.test(lower) || lower.includes(p.name.toLowerCase())) {
+          out.push(p);
+          seen.add(p.id);
+        }
+      }
+      return out;
+    },
+    [allPeople]
+  );
+
+  /**
    * Call /api/folks-says with the user's thought + the corpus of the active
    * person (whoever this chat thread is "about") + the prior conversation so
    * the AI can resolve pronouns. Append the response as a folks message.
@@ -124,7 +154,10 @@ function ChatScreenInner() {
     async (thought: string, priorMessages: ChatMessage[], activeId: string | null) => {
       // Person resolution: explicitly mentioned in THIS message > active person
       // tracked from earlier in the chat > none.
-      let person = findMentionedPerson(thought);
+      // Find every known person referenced this turn — used by the API to
+      // acknowledge each name even though we only fetch corpus for one.
+      const allMentioned = findAllMentionedPeople(thought);
+      let person: Person | null = allMentioned[0] ?? null;
       if (!person && activeId) {
         person = allPeople.find((p) => p.id === activeId) ?? null;
       }
@@ -158,6 +191,10 @@ function ChatScreenInner() {
               daysAgo: Math.floor((Date.now() - e.createdAt) / DAY_MS),
               severity: e.severity ?? 0,
             })),
+            // Names from THIS message that resolve to known folks. The API
+            // uses this to acknowledge every mentioned name, not just the
+            // primary one whose corpus we fetched.
+            mentionedPeople: allMentioned.map((p) => p.name),
             // Last ~10 messages of this chat so the AI can resolve "she", "he",
             // "they", "it" against earlier turns. User messages first, then
             // folks responses — mixed in chronological order.
@@ -194,7 +231,7 @@ function ChatScreenInner() {
         setAwaitingFolks(false);
       }
     },
-    [findMentionedPerson, allPeople]
+    [findMentionedPerson, findAllMentionedPeople, allPeople]
   );
 
   /** Commit the current draft as a user message and immediately fire folks-says. */
