@@ -924,27 +924,24 @@ function ActiveWritingArea({
             lineHeight: '24px',
           }}
         />
-        {/* Pulsing-dot ready indicator — shown when the textarea is empty
-            so the user always knows they can type. Hidden while folks is
-            replying so we don't stack two dot animations. */}
+        {/* Ready indicator — a single thin blinking caret at the writing
+            line's start position. Visually distinct from the folks-typing
+            indicator (also dots) so the user can tell at a glance whether
+            it's their turn to write or whether folks is replying. */}
         {!value && showReadyDots && (
-          <div
+          <span
             aria-hidden="true"
             style={{
               position: 'absolute',
               left: 1,
-              top: 8,
-              display: 'flex',
-              gap: 5,
-              alignItems: 'center',
-              color: TAN,
+              top: 5,
+              width: 1.6,
+              height: 16,
+              background: INK,
+              animation: 'blink-caret 1.05s steps(1) infinite',
               pointerEvents: 'none',
             }}
-          >
-            <span className="folks-dot" style={{ animationDelay: '0s' }} />
-            <span className="folks-dot" style={{ animationDelay: '0.18s' }} />
-            <span className="folks-dot" style={{ animationDelay: '0.36s' }} />
-          </div>
+          />
         )}
       </div>
       {/* Action row: mic toggle on the left, send on the right when there
