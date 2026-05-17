@@ -295,13 +295,7 @@ function JournalContent() {
         >
           journal
         </span>
-        <Link
-          href="/settings"
-          aria-label="Settings"
-          className="text-ink-secondary transition-colors hover:text-ink-primary"
-        >
-          <i className="ti ti-settings" style={{ fontSize: 18 }} />
-        </Link>
+        <span aria-hidden="true" style={{ width: 18 }} />
       </header>
 
       <div ref={scrollRef} className="-mx-4 flex-1 overflow-y-auto px-4 pb-12">

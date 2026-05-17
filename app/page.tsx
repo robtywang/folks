@@ -344,23 +344,23 @@ export default function Home() {
         </svg>
       </button>
 
-      {/* Settings — gear top-right, alone */}
+      {/* Settings — gear top-right, alone. Matches the journal-page header
+          treatment: ink-secondary color, 18px Tabler glyph. */}
       <button
         onClick={() => router.push('/settings')}
         aria-label="Open settings"
-        className="absolute"
+        className="absolute text-ink-secondary transition-colors hover:text-ink-primary"
         style={{
           right: 18,
-          top: 13,
+          top: 12,
           width: 18,
           height: 18,
           background: 'transparent',
           border: 'none',
           padding: 0,
-          color: TAN,
         }}
       >
-        <i className="ti ti-settings" style={{ fontSize: 16 }} />
+        <i className="ti ti-settings" style={{ fontSize: 18 }} />
       </button>
 
       {/* Date hero — moved higher to sit closer to the wordmark. */}

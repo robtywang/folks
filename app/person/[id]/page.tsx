@@ -306,6 +306,24 @@ export default function PersonProfile({
         )}
       </div>
 
+      {/* Sentiment tracker — visual analytic showing how the relationship
+          has felt over time. Only renders when there are at least 3 entries
+          so the chart is meaningful. */}
+      {list.length >= 3 && (
+        <div className="mt-8">
+          <div className="mb-3 flex items-center gap-3">
+            <span
+              className="text-[10px] uppercase tracking-widest text-ink-secondary"
+              style={{ fontFamily: 'var(--font-mono)' }}
+            >
+              sentiment over time
+            </span>
+            <div className="h-px flex-1" style={{ background: 'var(--border-hair)' }} />
+          </div>
+          <SentimentTracker entries={list} />
+        </div>
+      )}
+
       {/* Who is X */}
       <div className="mt-8">
         <div className="mb-2 flex items-center justify-between gap-3">
@@ -714,6 +732,158 @@ function Topbar({ personName }: { personName?: string }) {
       </span>
       <span aria-hidden="true" style={{ width: 18 }} />
     </header>
+  );
+}
+
+/**
+ * Sentiment tracker — a soft area chart of sentiment values over time.
+ * Renders the last N entries (oldest left → newest right) as a smoothed
+ * curve with a tinted area underneath. Color comes from the position of
+ * each value: above 5.5 = sage (warm), below = coral (heavy).
+ */
+function SentimentTracker({ entries }: { entries: Entry[] }) {
+  const W = 320;
+  const H = 90;
+  const PAD_X = 6;
+  const PAD_Y = 10;
+  const MIDLINE_Y = H / 2;
+
+  // Oldest left, newest right. Cap at last 16 so the chart stays legible.
+  const points = [...entries]
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .slice(-16)
+    .map((e) => ({
+      sentiment: e.sentiment,
+      createdAt: e.createdAt,
+    }));
+  if (points.length === 0) return null;
+
+  const scaleX = (i: number): number => {
+    if (points.length === 1) return W / 2;
+    return PAD_X + (i / (points.length - 1)) * (W - PAD_X * 2);
+  };
+  // Sentiment 1..10 → top..bottom of chart. 10 = highest = top.
+  const scaleY = (s: number): number => {
+    const norm = (s - 1) / 9; // 0..1
+    return H - PAD_Y - norm * (H - PAD_Y * 2);
+  };
+
+  const coords = points.map((p, i) => ({ x: scaleX(i), y: scaleY(p.sentiment), s: p.sentiment }));
+
+  // Smooth path using Catmull-Rom → Bezier conversion for an organic curve.
+  function smoothPath(pts: { x: number; y: number }[]): string {
+    if (pts.length === 0) return '';
+    if (pts.length === 1) return `M ${pts[0]!.x} ${pts[0]!.y}`;
+    let d = `M ${pts[0]!.x} ${pts[0]!.y}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i === 0 ? i : i - 1]!;
+      const p1 = pts[i]!;
+      const p2 = pts[i + 1]!;
+      const p3 = pts[i + 2 < pts.length ? i + 2 : i + 1]!;
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C ${cp1x.toFixed(2)} ${cp1y.toFixed(2)}, ${cp2x.toFixed(2)} ${cp2y.toFixed(2)}, ${p2.x.toFixed(2)} ${p2.y.toFixed(2)}`;
+    }
+    return d;
+  }
+
+  const linePath = smoothPath(coords);
+  // Closed area path for the soft fill underneath.
+  const areaPath = `${linePath} L ${coords[coords.length - 1]!.x} ${H - PAD_Y} L ${coords[0]!.x} ${H - PAD_Y} Z`;
+
+  const latest = points[points.length - 1]!;
+  const latestCoord = coords[coords.length - 1]!;
+  const latestWarm = latest.sentiment >= 5.5;
+
+  return (
+    <div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+        style={{ display: 'block' }}
+      >
+        <defs>
+          <linearGradient id="sent-fill-warm" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#6F7D63" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#6F7D63" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="sent-fill-cool" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#C8553D" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="#C8553D" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Soft baseline at the midpoint (sentiment 5.5) — separates warm/heavy */}
+        <line
+          x1={PAD_X}
+          y1={MIDLINE_Y}
+          x2={W - PAD_X}
+          y2={MIDLINE_Y}
+          stroke="var(--border-hair)"
+          strokeDasharray="2 3"
+          strokeWidth="0.6"
+          opacity="0.7"
+        />
+
+        {/* Filled area underneath the curve, gradient color by overall tone */}
+        <path
+          d={areaPath}
+          fill={`url(#${latestWarm ? 'sent-fill-warm' : 'sent-fill-cool'})`}
+        />
+
+        {/* The curve itself */}
+        <path
+          d={linePath}
+          fill="none"
+          stroke={latestWarm ? '#6F7D63' : '#C8553D'}
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* Dots at each entry */}
+        {coords.map((c, i) => (
+          <circle
+            key={i}
+            cx={c.x}
+            cy={c.y}
+            r={i === coords.length - 1 ? 3 : 1.8}
+            fill={c.s >= 5.5 ? '#6F7D63' : '#C8553D'}
+          />
+        ))}
+
+        {/* Coral ring around the most recent point */}
+        <circle
+          cx={latestCoord.x}
+          cy={latestCoord.y}
+          r={5.5}
+          fill="none"
+          stroke={latestWarm ? '#6F7D63' : '#C8553D'}
+          strokeWidth="0.8"
+          opacity="0.4"
+        />
+      </svg>
+      <div
+        className="mt-2 flex items-center justify-between"
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          letterSpacing: '0.1em',
+          textTransform: 'uppercase',
+          color: 'var(--ink-tertiary)',
+        }}
+      >
+        <span>oldest</span>
+        <span style={{ color: 'var(--ink-secondary)' }}>
+          latest: {latest.sentiment}/10
+        </span>
+        <span>now</span>
+      </div>
+    </div>
   );
 }
 
