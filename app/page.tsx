@@ -63,9 +63,9 @@ export default function Home() {
   const [checked, setChecked] = useState(false);
   const [draft, setDraft] = useState('');
   const [userName, setUserName] = useState<string | null>(null);
-  // Voice-press transition: before /chat opens, the mic morphs into a
-  // pulsing "listening" pill so the tap has visible feedback.
-  const [voiceTransition, setVoiceTransition] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [voiceInterim, setVoiceInterim] = useState('');
+  const recognitionRef = useRef<{ stop: () => void } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -156,13 +156,14 @@ export default function Home() {
     })();
   }, [router]);
 
-  // Auto-grow textarea so the box extends downward as text wraps.
+  // Auto-grow textarea so the box extends downward as text wraps. Tracks
+  // both the typed draft and the live voice interim.
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${Math.max(el.scrollHeight, 24)}px`;
-  }, [draft]);
+  }, [draft, voiceInterim]);
 
   function sendDraft() {
     const text = draft.trim();
@@ -177,20 +178,102 @@ export default function Home() {
     }
   }
 
-  // Voice = enter the chat in voice mode. Brief on-home transition so the
-  // tap has visible feedback before /chat takes over.
-  function enterVoiceMode() {
-    if (voiceTransition) return;
-    setVoiceTransition(true);
-    setTimeout(() => router.push('/chat?mode=voice'), 600);
+  // Voice as input method: recording fills the textarea locally on home.
+  // Send button submits to /chat. No auto-navigation, no auto-commit.
+  function stopVoice() {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setRecording(false);
+    setVoiceInterim('');
+  }
+
+  function startVoice() {
+    if (typeof window === 'undefined') return;
+    const w = window as unknown as Record<string, unknown>;
+    const SR = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as
+      | (new () => unknown)
+      | undefined;
+    if (!SR) {
+      alert('voice input is not supported in this browser. try chrome or safari.');
+      return;
+    }
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition = new SR() as any;
+    recognition.continuous = !isIOS;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    let baseText = draft ? draft + (draft.endsWith(' ') ? '' : ' ') : '';
+    let userStopped = false;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      let finalChunk = '';
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript as string;
+        if (event.results[i].isFinal) finalChunk += t;
+        else interim += t;
+      }
+      if (finalChunk) {
+        baseText += finalChunk;
+        setDraft(baseText);
+      }
+      setVoiceInterim(interim);
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (e: any) => {
+      const code = e?.error;
+      setVoiceInterim('');
+      if (code === 'aborted' || code === 'no-speech') {
+        if (!isIOS || userStopped) setRecording(false);
+        return;
+      }
+      userStopped = true;
+      setRecording(false);
+    };
+    recognition.onend = () => {
+      setVoiceInterim('');
+      if (isIOS && !userStopped) {
+        try {
+          recognition.start();
+          return;
+        } catch {}
+      }
+      if (!userStopped) setRecording(false);
+    };
+
+    recognitionRef.current = {
+      stop: () => {
+        userStopped = true;
+        try {
+          recognition.stop();
+        } catch {}
+      },
+    };
+    try {
+      recognition.start();
+      setRecording(true);
+    } catch (err) {
+      console.warn('recognition.start failed:', err);
+    }
+  }
+
+  function toggleVoice() {
+    if (recording) stopVoice();
+    else startVoice();
   }
 
   if (!checked) {
     return <main className="h-full w-full" />;
   }
 
-  const hasText = draft.trim().length > 0;
-  const highlightedParts = highlightNames(draft, allPeople);
+  const composedValue = draft + (recording && voiceInterim ? voiceInterim : '');
+  const hasText = composedValue.trim().length > 0;
+  const highlightedParts = highlightNames(composedValue, allPeople);
 
   return (
     <motion.main
@@ -310,15 +393,16 @@ export default function Home() {
               wordWrap: 'break-word',
             }}
           >
-            {draft ? highlightedParts : <>&#8203;</>}
+            {composedValue ? highlightedParts : <>&#8203;</>}
           </div>
           <textarea
             ref={textareaRef}
-            value={draft}
+            value={composedValue}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={handleInputKeyDown}
             autoFocus
             rows={1}
+            readOnly={recording}
             className="italic"
             style={{
               position: 'relative',
@@ -340,7 +424,7 @@ export default function Home() {
               WebkitTextFillColor: 'transparent',
             }}
           />
-          {!draft && (
+          {!composedValue && (
             <span
               className="italic pointer-events-none"
               style={{
@@ -383,52 +467,45 @@ export default function Home() {
           }}
         />
 
-        {/* Action row — mic = navigate to /chat in voice mode. Send appears
-            once there's typed text and navigates to /chat with the seed. */}
+        {/* Action row — big mic (with text label) on the left, send on the
+            right. Voice fills the textarea locally; send navigates. */}
         <div
-          className="mt-4 flex items-center justify-end"
+          className="mt-5 flex items-center justify-between"
           style={{ gap: 18 }}
         >
           <button
-            onClick={enterVoiceMode}
-            aria-label="Start voice conversation"
-            disabled={voiceTransition}
+            onClick={toggleVoice}
+            aria-label={recording ? 'Stop recording' : 'Start voice'}
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
+              gap: 10,
               background: 'transparent',
               border: 'none',
               padding: 0,
             }}
           >
-            <svg width="24" height="24" viewBox="0 0 24 24">
-              <rect x={11.2} y={9} width="1.6" height="6" rx="0.8" fill={voiceTransition ? CORAL : TAN} />
-              <rect x={11.2 - 4} y={7} width="1.6" height="10" rx="0.8" fill={voiceTransition ? CORAL : TAN} />
-              <rect x={11.2 + 4} y={7} width="1.6" height="10" rx="0.8" fill={voiceTransition ? CORAL : TAN} />
-              <rect x={11.2 + 8} y={9} width="1.6" height="6" rx="0.8" fill={voiceTransition ? CORAL : TAN} />
+            <svg width="30" height="30" viewBox="0 0 30 30">
+              <rect x={14.2} y={10.5} width="1.8" height="9" rx="0.9" fill={recording ? CORAL : TAN} />
+              <rect x={14.2 - 5} y={7.5} width="1.8" height="15" rx="0.9" fill={recording ? CORAL : TAN} />
+              <rect x={14.2 + 5} y={7.5} width="1.8" height="15" rx="0.9" fill={recording ? CORAL : TAN} />
+              <rect x={14.2 + 10} y={10.5} width="1.8" height="9" rx="0.9" fill={recording ? CORAL : TAN} />
             </svg>
-            {voiceTransition && (
-              <motion.span
-                initial={{ opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.18 }}
-                className="text-[11px] uppercase tracking-widest"
-                style={{
-                  fontFamily: 'JetBrains Mono, monospace',
-                  fontWeight: 500,
-                  color: CORAL,
-                  letterSpacing: '0.12em',
-                }}
-              >
-                listening
-              </motion.span>
-            )}
+            <span
+              className="text-[12px] italic"
+              style={{
+                fontFamily: 'Georgia, serif',
+                color: recording ? CORAL : '#5A5347',
+                lineHeight: 1,
+              }}
+            >
+              {recording ? 'listening…' : 'tap to speak'}
+            </span>
           </button>
           {hasText && (
             <button
               onClick={() => sendDraft()}
-              className="text-[11px] uppercase tracking-widest"
+              className="text-[12px] uppercase tracking-widest"
               style={{
                 fontFamily: 'JetBrains Mono, monospace',
                 fontWeight: 500,

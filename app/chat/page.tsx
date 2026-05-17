@@ -38,9 +38,6 @@ function formatToday(): string {
 
 const DAY_MS = 86_400_000;
 
-const TYPING_DEBOUNCE_MS = 2000;
-const MIN_WORDS_BEFORE_FIRE = 6;
-
 const FONT_SERIF = 'Georgia, serif';
 const FONT_MONO = 'JetBrains Mono, monospace';
 const CREAM = '#FAF7F0';
@@ -68,7 +65,6 @@ function ChatScreenInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const seed = searchParams?.get('seed') ?? null;
-  const mode = searchParams?.get('mode') ?? null; // 'voice' | null
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentDraft, setCurrentDraft] = useState('');
@@ -78,16 +74,14 @@ function ChatScreenInner() {
   // name in any user message and carried forward so pronouns resolve. Updated
   // when a later user message explicitly names a different person.
   const [activePersonId, setActivePersonId] = useState<string | null>(null);
-  // Voice mode: if true, /chat is actively listening. Each utterance auto-
-  // commits as a user message + fires folks-says. User can switch to text
-  // mode by typing (mic stops).
-  const [voiceMode, setVoiceMode] = useState(mode === 'voice');
+  // Voice as input method (not a separate mode). Tap mic → recording fills
+  // the textarea. User explicitly taps send to commit. Text mode is always
+  // available alongside.
+  const [recording, setRecording] = useState(false);
   const [voiceInterim, setVoiceInterim] = useState('');
 
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seededRef = useRef(false);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Known people for inline coral name-highlighting and corpus lookup.
   const allPeople: Person[] =
@@ -239,28 +233,23 @@ function ChatScreenInner() {
     commitDraft(seed);
   }, [seed, commitDraft]);
 
-  // Voice mode — auto-start recognition on mount when arriving from home in
-  // voice mode. Each utterance auto-commits on silence (1.8s) so the user
-  // can keep speaking and folks responds between sentences.
-  function stopVoiceMode() {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
+  // Voice as input method — fills the textarea (currentDraft). User must
+  // explicitly tap send to commit. No auto-commit on silence.
+  function stopVoice() {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
-    setVoiceMode(false);
+    setRecording(false);
     setVoiceInterim('');
   }
 
-  function startVoiceMode() {
+  function startVoice() {
     if (typeof window === 'undefined') return;
     const w = window as unknown as Record<string, unknown>;
     const SR = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as
       | (new () => unknown)
       | undefined;
     if (!SR) {
-      setVoiceMode(false);
+      alert('voice input is not supported in this browser. try chrome or safari.');
       return;
     }
     const isIOS =
@@ -272,16 +261,10 @@ function ChatScreenInner() {
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
-    let buffer = '';
+    let baseText = currentDraft
+      ? currentDraft + (currentDraft.endsWith(' ') ? '' : ' ')
+      : '';
     let userStopped = false;
-
-    const SILENCE_MS = 1800;
-    const flushUtterance = () => {
-      const text = buffer.trim();
-      buffer = '';
-      setVoiceInterim('');
-      if (text) commitDraft(text);
-    };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
@@ -292,32 +275,32 @@ function ChatScreenInner() {
         if (event.results[i].isFinal) finalChunk += t;
         else interim += t;
       }
-      if (finalChunk) buffer += (buffer.endsWith(' ') || !buffer ? '' : ' ') + finalChunk;
+      if (finalChunk) {
+        baseText += finalChunk;
+        setCurrentDraft(baseText);
+      }
       setVoiceInterim(interim);
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(flushUtterance, SILENCE_MS);
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (e: any) => {
       const code = e?.error;
-      if (code === 'no-speech' || code === 'aborted') {
-        if (!isIOS || userStopped) {
-          setVoiceMode(false);
-        }
+      setVoiceInterim('');
+      if (code === 'aborted' || code === 'no-speech') {
+        if (!isIOS || userStopped) setRecording(false);
         return;
       }
       userStopped = true;
-      setVoiceMode(false);
+      setRecording(false);
     };
     recognition.onend = () => {
+      setVoiceInterim('');
       if (isIOS && !userStopped) {
         try {
           recognition.start();
           return;
         } catch {}
       }
-      setVoiceMode(false);
-      setVoiceInterim('');
+      if (!userStopped) setRecording(false);
     };
 
     recognitionRef.current = {
@@ -330,41 +313,29 @@ function ChatScreenInner() {
     };
     try {
       recognition.start();
+      setRecording(true);
     } catch (err) {
       console.warn('chat recognition.start failed:', err);
-      setVoiceMode(false);
     }
   }
 
-  // Auto-start voice when the chat opens in voice mode.
+  function toggleVoice() {
+    if (recording) stopVoice();
+    else startVoice();
+  }
+
+  // Cleanup recognition on unmount.
   useEffect(() => {
-    if (voiceMode && !recognitionRef.current) startVoiceMode();
-    // Cleanup on unmount.
     return () => {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       recognitionRef.current?.stop();
       recognitionRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voiceMode]);
-
-  // Debounce: 2s after the user stops typing AND >=6 words → commit + fire.
-  function handleDraftChange(next: string) {
-    setCurrentDraft(next);
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    const wordCount = next.trim().split(/\s+/).filter(Boolean).length;
-    if (wordCount >= MIN_WORDS_BEFORE_FIRE) {
-      debounceTimer.current = setTimeout(() => {
-        commitDraft(next);
-      }, TYPING_DEBOUNCE_MS);
-    }
-  }
+  }, []);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Shift+Enter inserts a newline; plain Enter commits the message.
     if (e.key === 'Enter' && !e.shiftKey && currentDraft.trim()) {
       e.preventDefault();
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
       commitDraft(currentDraft);
     }
   }
@@ -481,43 +452,6 @@ function ChatScreenInner() {
         {formatToday()}
       </div>
 
-      {/* Voice-mode indicator — pulsing coral mic + "listening" label.
-          Tap to stop voice and switch to text mode. */}
-      {voiceMode && (
-        <motion.button
-          onClick={stopVoiceMode}
-          aria-label="Stop voice"
-          animate={{ opacity: [1, 0.55, 1] }}
-          transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute"
-          style={{
-            right: 14,
-            top: 14,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            background: 'transparent',
-            border: 'none',
-            padding: 0,
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14">
-            <rect x={6.2} y={5} width="1.6" height="4" rx="0.8" fill={CORAL} />
-            <rect x={6.2 - 3} y={3.5} width="1.6" height="7" rx="0.8" fill={CORAL} />
-            <rect x={6.2 + 3} y={3.5} width="1.6" height="7" rx="0.8" fill={CORAL} />
-          </svg>
-          <span
-            className="text-[10px] uppercase tracking-widest"
-            style={{
-              fontFamily: FONT_MONO,
-              color: CORAL,
-              letterSpacing: '0.12em',
-            }}
-          >
-            listening
-          </span>
-        </motion.button>
-      )}
 
       {/* Scrollable content area + writing area at the bottom */}
       <div
@@ -545,94 +479,18 @@ function ChatScreenInner() {
           {/* Typing indicator — three dots in folks-row position, shown
               between user commit and folks response landing. */}
           {awaitingFolks && <FolksTypingDots />}
-
-          {/* Live voice transcription — shown only in voice mode. Renders
-              the in-flight interim text exactly where the next user message
-              will land, so the user sees "this is what I hear" → commits to
-              a real message on silence. */}
-          {voiceMode && voiceInterim && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 0.15 }}
-              style={{
-                position: 'relative',
-                paddingLeft: 14,
-              }}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 9,
-                  width: 4,
-                  height: 4,
-                  borderRadius: 50,
-                  background: CORAL,
-                  boxShadow: '0 0 0 0 rgba(200,85,61,0.5)',
-                  animation: 'blink-caret 1s steps(1) infinite',
-                }}
-              />
-              <p
-                className="italic"
-                style={{
-                  fontFamily: FONT_SERIF,
-                  fontSize: 16,
-                  color: INK_MUTED,
-                  lineHeight: 1.5,
-                  margin: 0,
-                }}
-              >
-                {voiceInterim}
-              </p>
-            </motion.div>
-          )}
-
-          {/* Voice mode empty state — explicit cue when listening but the
-              user hasn't said anything yet. */}
-          {voiceMode && !voiceInterim && !awaitingFolks && (
-            <div
-              style={{
-                marginTop: 12,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                color: CORAL,
-              }}
-            >
-              <span className="folks-dot" style={{ animationDelay: '0s' }} />
-              <span className="folks-dot" style={{ animationDelay: '0.18s' }} />
-              <span className="folks-dot" style={{ animationDelay: '0.36s' }} />
-              <span
-                className="text-[10px] uppercase tracking-widest"
-                style={{
-                  fontFamily: FONT_MONO,
-                  color: TAN,
-                  letterSpacing: '0.12em',
-                  marginLeft: 4,
-                }}
-              >
-                go ahead, i'm listening
-              </span>
-            </div>
-          )}
         </div>
 
-        {/* Active writing area — text mode only. Voice mode owns the bottom
-            of the screen via the "listening" pill in the top-right. */}
-        {!voiceMode && (
-          <ActiveWritingArea
-            value={currentDraft}
-            onChange={handleDraftChange}
-            onKeyDown={handleKeyDown}
-            onSend={() => {
-              if (debounceTimer.current) clearTimeout(debounceTimer.current);
-              commitDraft(currentDraft);
-            }}
-            showReadyDots={messages.length === 0}
-          />
-        )}
+        {/* Active writing area — text and voice both fill this surface. */}
+        <ActiveWritingArea
+          value={currentDraft + (recording && voiceInterim ? voiceInterim : '')}
+          onChange={(s) => setCurrentDraft(s)}
+          onKeyDown={handleKeyDown}
+          onSend={() => commitDraft(currentDraft)}
+          onMicToggle={toggleVoice}
+          recording={recording}
+          showReadyDots={messages.length === 0}
+        />
       </div>
 
       {/* Send-to-journal pill */}
@@ -872,12 +730,16 @@ function ActiveWritingArea({
   onChange,
   onKeyDown,
   onSend,
+  onMicToggle,
+  recording,
   showReadyDots = false,
 }: {
   value: string;
   onChange: (s: string) => void;
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onSend: () => void;
+  onMicToggle: () => void;
+  recording: boolean;
   showReadyDots?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -953,13 +815,42 @@ function ActiveWritingArea({
           </div>
         )}
       </div>
-      {/* Send button — explicit prompt-the-AI affordance for mobile, where
-          Enter on a textarea inserts a newline rather than submitting. */}
-      {trimmed.length > 0 && (
-        <div className="mt-2 flex items-center justify-end">
+      {/* Action row: mic toggle on the left, send on the right when there
+          is text. Both modes (voice + text) always available. */}
+      <div className="mt-3 flex items-center justify-between" style={{ gap: 18 }}>
+        <button
+          onClick={onMicToggle}
+          aria-label={recording ? 'Stop recording' : 'Start voice'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+          }}
+        >
+          <svg width="26" height="26" viewBox="0 0 26 26">
+            <rect x={12.2} y={9} width="1.6" height="8" rx="0.8" fill={recording ? CORAL : TAN} />
+            <rect x={12.2 - 4.5} y={6.5} width="1.6" height="13" rx="0.8" fill={recording ? CORAL : TAN} />
+            <rect x={12.2 + 4.5} y={6.5} width="1.6" height="13" rx="0.8" fill={recording ? CORAL : TAN} />
+            <rect x={12.2 + 9} y={9} width="1.6" height="8" rx="0.8" fill={recording ? CORAL : TAN} />
+          </svg>
+          <span
+            className="text-[12px] italic"
+            style={{
+              fontFamily: FONT_SERIF,
+              color: recording ? CORAL : INK_MUTED,
+              lineHeight: 1,
+            }}
+          >
+            {recording ? 'listening…' : 'tap to speak'}
+          </span>
+        </button>
+        {trimmed.length > 0 && (
           <button
             onClick={onSend}
-            className="text-[11px] uppercase tracking-widest"
+            className="text-[12px] uppercase tracking-widest"
             style={{
               fontFamily: FONT_MONO,
               fontWeight: 500,
@@ -971,8 +862,8 @@ function ActiveWritingArea({
           >
             send →
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </motion.div>
   );
 }
