@@ -63,6 +63,9 @@ export default function Home() {
   const [checked, setChecked] = useState(false);
   const [draft, setDraft] = useState('');
   const [userName, setUserName] = useState<string | null>(null);
+  // Voice-press transition: before /chat opens, the mic morphs into a
+  // pulsing "listening" pill so the tap has visible feedback.
+  const [voiceTransition, setVoiceTransition] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -174,10 +177,12 @@ export default function Home() {
     }
   }
 
-  // Voice = enter the chat in voice mode. No local recording on home; the
-  // chat owns the entire conversation surface including audio.
+  // Voice = enter the chat in voice mode. Brief on-home transition so the
+  // tap has visible feedback before /chat takes over.
   function enterVoiceMode() {
-    router.push('/chat?mode=voice');
+    if (voiceTransition) return;
+    setVoiceTransition(true);
+    setTimeout(() => router.push('/chat?mode=voice'), 600);
   }
 
   if (!checked) {
@@ -243,29 +248,11 @@ export default function Home() {
         </svg>
       </button>
 
-      {/* Greeting — pulled from settings. Falls back to no greeting line if
-          the user hasn't set a name yet. */}
-      {userName && (
-        <div
-          className="absolute inset-x-0 text-center italic"
-          style={{
-            top: 116,
-            fontFamily: 'Georgia, serif',
-            fontSize: 16,
-            fontWeight: 400,
-            lineHeight: 1.2,
-            color: '#5A5347',
-          }}
-        >
-          Hi, {userName}
-        </div>
-      )}
-
-      {/* Date hero — the visual centerpiece. Full date with year. */}
+      {/* Date hero — moved higher to sit closer to the wordmark. */}
       <div
         className="absolute inset-x-0 text-center italic"
         style={{
-          top: userName ? 146 : 156,
+          top: 92,
           fontFamily: 'Georgia, serif',
           fontSize: 26,
           fontWeight: 500,
@@ -279,8 +266,29 @@ export default function Home() {
         {formatDate()}
       </div>
 
+      {/* Greeting sits just above the writing area, anchored to the input
+          rather than the page header so it reads as "hi, [you] — write
+          something." */}
+      {userName && (
+        <div
+          className="absolute italic"
+          style={{
+            left: 16,
+            right: 16,
+            top: 244,
+            fontFamily: 'Georgia, serif',
+            fontSize: 16,
+            fontWeight: 400,
+            lineHeight: 1.2,
+            color: '#5A5347',
+          }}
+        >
+          Hi, {userName}
+        </div>
+      )}
+
       {/* Writing area */}
-      <div className="absolute" style={{ left: 16, right: 16, top: 290 }}>
+      <div className="absolute" style={{ left: 16, right: 16, top: 280 }}>
         {/* The textarea and a name-highlight overlay layered together. The
             textarea carries the caret + handles input; the overlay renders
             the same text with known names wrapped in coral. Both share
@@ -363,14 +371,12 @@ export default function Home() {
           )}
         </div>
 
-        {/* Hairline directly under the writing line — narrower than the
-            writing area so it reads as an accent underline, not a divider. */}
+        {/* Hairline directly under the writing line — full writing-area
+            width so it visually anchors the input. */}
         <div
           style={{
             marginTop: 12,
-            marginLeft: 'auto',
-            marginRight: 'auto',
-            width: '80%',
+            width: '100%',
             height: 0.7,
             background: TAN,
             opacity: 0.55,
@@ -386,20 +392,38 @@ export default function Home() {
           <button
             onClick={enterVoiceMode}
             aria-label="Start voice conversation"
+            disabled={voiceTransition}
             style={{
-              width: 24,
-              height: 24,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
               background: 'transparent',
               border: 'none',
               padding: 0,
             }}
           >
             <svg width="24" height="24" viewBox="0 0 24 24">
-              <rect x={11.2} y={9} width="1.6" height="6" rx="0.8" fill={TAN} />
-              <rect x={11.2 - 4} y={7} width="1.6" height="10" rx="0.8" fill={TAN} />
-              <rect x={11.2 + 4} y={7} width="1.6" height="10" rx="0.8" fill={TAN} />
-              <rect x={11.2 + 8} y={9} width="1.6" height="6" rx="0.8" fill={TAN} />
+              <rect x={11.2} y={9} width="1.6" height="6" rx="0.8" fill={voiceTransition ? CORAL : TAN} />
+              <rect x={11.2 - 4} y={7} width="1.6" height="10" rx="0.8" fill={voiceTransition ? CORAL : TAN} />
+              <rect x={11.2 + 4} y={7} width="1.6" height="10" rx="0.8" fill={voiceTransition ? CORAL : TAN} />
+              <rect x={11.2 + 8} y={9} width="1.6" height="6" rx="0.8" fill={voiceTransition ? CORAL : TAN} />
             </svg>
+            {voiceTransition && (
+              <motion.span
+                initial={{ opacity: 0, x: -4 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.18 }}
+                className="text-[11px] uppercase tracking-widest"
+                style={{
+                  fontFamily: 'JetBrains Mono, monospace',
+                  fontWeight: 500,
+                  color: CORAL,
+                  letterSpacing: '0.12em',
+                }}
+              >
+                listening
+              </motion.span>
+            )}
           </button>
           {hasText && (
             <button

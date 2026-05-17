@@ -481,11 +481,14 @@ function ChatScreenInner() {
         {formatToday()}
       </div>
 
-      {/* Voice-mode indicator — subtle coral mic + "listening" label */}
+      {/* Voice-mode indicator — pulsing coral mic + "listening" label.
+          Tap to stop voice and switch to text mode. */}
       {voiceMode && (
-        <button
+        <motion.button
           onClick={stopVoiceMode}
           aria-label="Stop voice"
+          animate={{ opacity: [1, 0.55, 1] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
           className="absolute"
           style={{
             right: 14,
@@ -513,7 +516,7 @@ function ChatScreenInner() {
           >
             listening
           </span>
-        </button>
+        </motion.button>
       )}
 
       {/* Scrollable content area + writing area at the bottom */}
@@ -542,6 +545,78 @@ function ChatScreenInner() {
           {/* Typing indicator — three dots in folks-row position, shown
               between user commit and folks response landing. */}
           {awaitingFolks && <FolksTypingDots />}
+
+          {/* Live voice transcription — shown only in voice mode. Renders
+              the in-flight interim text exactly where the next user message
+              will land, so the user sees "this is what I hear" → commits to
+              a real message on silence. */}
+          {voiceMode && voiceInterim && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'relative',
+                paddingLeft: 14,
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  top: 9,
+                  width: 4,
+                  height: 4,
+                  borderRadius: 50,
+                  background: CORAL,
+                  boxShadow: '0 0 0 0 rgba(200,85,61,0.5)',
+                  animation: 'blink-caret 1s steps(1) infinite',
+                }}
+              />
+              <p
+                className="italic"
+                style={{
+                  fontFamily: FONT_SERIF,
+                  fontSize: 16,
+                  color: INK_MUTED,
+                  lineHeight: 1.5,
+                  margin: 0,
+                }}
+              >
+                {voiceInterim}
+              </p>
+            </motion.div>
+          )}
+
+          {/* Voice mode empty state — explicit cue when listening but the
+              user hasn't said anything yet. */}
+          {voiceMode && !voiceInterim && !awaitingFolks && (
+            <div
+              style={{
+                marginTop: 12,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                color: CORAL,
+              }}
+            >
+              <span className="folks-dot" style={{ animationDelay: '0s' }} />
+              <span className="folks-dot" style={{ animationDelay: '0.18s' }} />
+              <span className="folks-dot" style={{ animationDelay: '0.36s' }} />
+              <span
+                className="text-[10px] uppercase tracking-widest"
+                style={{
+                  fontFamily: FONT_MONO,
+                  color: TAN,
+                  letterSpacing: '0.12em',
+                  marginLeft: 4,
+                }}
+              >
+                go ahead, i'm listening
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Active writing area — text mode only. Voice mode owns the bottom
