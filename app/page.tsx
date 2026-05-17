@@ -168,7 +168,16 @@ export default function Home() {
   function sendDraft() {
     const text = draft.trim();
     if (!text) return;
-    router.push(`/chat?seed=${encodeURIComponent(text)}`);
+    // If the user got the draft via voice, signal /chat to auto-listen on
+    // mount so the conversation continues hands-free.
+    const voiceParam = recording ? '&voice=1' : '';
+    if (recording) stopVoice();
+    router.push(`/chat?seed=${encodeURIComponent(text)}${voiceParam}`);
+  }
+
+  function goManualEntry() {
+    if (recording) stopVoice();
+    router.push('/write');
   }
 
   function handleInputKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -467,8 +476,10 @@ export default function Home() {
           }}
         />
 
-        {/* Action row — big mic (with text label) on the left, send on the
-            right. Voice fills the textarea locally; send navigates. */}
+        {/* Action row — big mic + label on the left; on the right, either
+            "manual entry →" (empty state, skips the chat surface and goes
+            straight to the journal write screen) OR "send →" (when there's
+            text, navigates to /chat with the seed). */}
         <div
           className="mt-5 flex items-center justify-between"
           style={{ gap: 18 }}
@@ -502,7 +513,7 @@ export default function Home() {
               {recording ? 'listening…' : 'tap to speak'}
             </span>
           </button>
-          {hasText && (
+          {hasText ? (
             <button
               onClick={() => sendDraft()}
               className="text-[12px] uppercase tracking-widest"
@@ -516,6 +527,20 @@ export default function Home() {
               }}
             >
               send →
+            </button>
+          ) : (
+            <button
+              onClick={goManualEntry}
+              className="text-[12px] italic"
+              style={{
+                fontFamily: 'Georgia, serif',
+                color: '#5A5347',
+                background: 'transparent',
+                border: 'none',
+                lineHeight: 1,
+              }}
+            >
+              or manual entry →
             </button>
           )}
         </div>

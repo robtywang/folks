@@ -408,6 +408,45 @@ function JournalContent() {
   );
 }
 
+/** Auto-growing textarea sized to the entire entry text. */
+function EditTextarea({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  disabled: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.max(el.scrollHeight, 80)}px`;
+  }, [value]);
+  useEffect(() => {
+    const id = setTimeout(() => ref.current?.focus(), 30);
+    return () => clearTimeout(id);
+  }, []);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      autoFocus
+      className="w-full resize-none rounded-md border bg-white/40 px-3 py-2.5 text-[15px] italic leading-snug text-ink-primary focus:outline-none"
+      style={{
+        fontFamily: 'var(--font-fraunces)',
+        borderColor: 'var(--border-hair)',
+        overflow: 'hidden',
+        lineHeight: 1.55,
+      }}
+    />
+  );
+}
+
 function JournalEntry({
   entry,
   peopleById,
@@ -511,16 +550,10 @@ function JournalEntry({
       {/* Body */}
       {mode === 'edit' ? (
         <div className="mt-2">
-          <textarea
+          <EditTextarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            rows={3}
             disabled={busy}
-            className="w-full resize-none rounded-md border bg-white/40 px-3 py-2 text-[15px] italic leading-snug text-ink-primary focus:outline-none"
-            style={{
-              fontFamily: 'var(--font-fraunces)',
-              borderColor: 'var(--border-hair)',
-            }}
           />
 
           <div className="mt-3">
@@ -611,17 +644,29 @@ function JournalEntry({
 
           <div className="mt-4 flex items-center justify-between gap-3">
             {/* Delete is bottom-left, under the attribute-to section.
-                First tap arms it, second tap confirms. Resets after 3s. */}
+                First tap arms it (filled coral), second tap confirms.
+                Resets after 3s if the user doesn't follow through. */}
             <button
               onClick={handleDeleteTap}
               disabled={busy}
-              className="text-[11px] uppercase tracking-widest disabled:opacity-40"
+              className="text-[11px] uppercase tracking-widest transition-colors disabled:opacity-40"
               style={{
                 fontFamily: 'var(--font-mono)',
-                color: deleteArmed ? 'var(--accent-coral)' : 'var(--ink-tertiary)',
+                padding: '6px 12px',
+                borderRadius: 6,
+                letterSpacing: '0.12em',
+                background: deleteArmed
+                  ? 'var(--accent-coral)'
+                  : 'rgba(200, 85, 61, 0.08)',
+                color: deleteArmed
+                  ? 'var(--bg-cream)'
+                  : 'var(--accent-coral)',
+                border: deleteArmed
+                  ? '1px solid var(--accent-coral)'
+                  : '1px solid rgba(200, 85, 61, 0.32)',
               }}
             >
-              {deleteArmed ? 'confirm delete' : 'delete entry'}
+              {deleteArmed ? 'confirm delete' : 'delete'}
             </button>
             <div className="flex items-center gap-3">
               <button

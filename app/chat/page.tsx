@@ -11,7 +11,8 @@ import {
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { motion } from 'framer-motion';
-import { db } from '@/lib/db';
+import { db, findPersonByName, createPerson } from '@/lib/db';
+import { parseEntry } from '@/lib/ai';
 import { saveEntry } from '@/lib/save-entry';
 import type { Entry, Person } from '@/types';
 
@@ -65,6 +66,7 @@ function ChatScreenInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const seed = searchParams?.get('seed') ?? null;
+  const autoVoice = searchParams?.get('voice') === '1';
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentDraft, setCurrentDraft] = useState('');
@@ -81,7 +83,10 @@ function ChatScreenInner() {
   const [voiceInterim, setVoiceInterim] = useState('');
 
   const seededRef = useRef(false);
+  const voiceAutoStartedRef = useRef(false);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement>(null);
 
   // Known people for inline coral name-highlighting and corpus lookup.
   const allPeople: Person[] =
@@ -200,6 +205,30 @@ function ChatScreenInner() {
       if (mentioned) {
         nextActive = mentioned.id;
         setActivePersonId(mentioned.id);
+      } else {
+        // Local match found nothing — fire parseEntry in the background to
+        // discover any new name and lazy-create a transient Person record
+        // so subsequent turns + chats inherit context.
+        void (async () => {
+          try {
+            const { parsed } = await parseEntry(trimmed);
+            if (
+              parsed.primary_person &&
+              parsed.confidence >= 0.6 &&
+              !parsed.is_solo
+            ) {
+              const existing = await findPersonByName(parsed.primary_person);
+              if (!existing) {
+                const created = await createPerson(parsed.primary_person, {
+                  isTransient: true,
+                });
+                setActivePersonId(created.id);
+              } else if (!activePersonId) {
+                setActivePersonId(existing.id);
+              }
+            }
+          } catch {}
+        })();
       }
       setMessages((prev) => {
         const next = [
@@ -222,7 +251,10 @@ function ChatScreenInner() {
     [fireFolksSays, findMentionedPerson, activePersonId]
   );
 
-  // Seed handling — one-shot, runs after allPeople is loaded so corpus lookup works.
+  // Seed handling — one-shot. Before commitDraft, run parseEntry to pull
+  // out the person + lazy-create them as a transient Person record. This
+  // way the AI context survives across chats even when the user never
+  // explicitly hits "send to journal."
   useEffect(() => {
     if (seededRef.current) return;
     if (!seed) {
@@ -230,7 +262,24 @@ function ChatScreenInner() {
       return;
     }
     seededRef.current = true;
-    commitDraft(seed);
+    (async () => {
+      try {
+        const { parsed } = await parseEntry(seed);
+        if (
+          parsed.primary_person &&
+          parsed.confidence >= 0.6 &&
+          !parsed.is_solo
+        ) {
+          const existing = await findPersonByName(parsed.primary_person);
+          if (!existing) {
+            await createPerson(parsed.primary_person, { isTransient: true });
+          }
+        }
+      } catch (err) {
+        console.warn('seed parse failed:', err);
+      }
+      commitDraft(seed);
+    })();
   }, [seed, commitDraft]);
 
   // Voice as input method — fills the textarea (currentDraft). User must
@@ -331,6 +380,25 @@ function ChatScreenInner() {
       recognitionRef.current = null;
     };
   }, []);
+
+  // If we arrived via voice mode on home, auto-start the mic so the
+  // conversation continues hands-free. Triggered after seed handling so
+  // the first user message lands first, then voice listens for follow-ups.
+  useEffect(() => {
+    if (!autoVoice) return;
+    if (voiceAutoStartedRef.current) return;
+    voiceAutoStartedRef.current = true;
+    const id = setTimeout(() => startVoice(), 600);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoVoice]);
+
+  // Auto-scroll: keep the latest content visible as messages stream in.
+  useEffect(() => {
+    const el = bottomAnchorRef.current;
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages.length, awaitingFolks, recording]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     // Shift+Enter inserts a newline; plain Enter commits the message.
@@ -455,6 +523,7 @@ function ChatScreenInner() {
 
       {/* Scrollable content area + writing area at the bottom */}
       <div
+        ref={scrollRef}
         className="absolute inset-x-0 overflow-y-auto"
         style={{
           top: 84,
@@ -489,8 +558,10 @@ function ChatScreenInner() {
           onSend={() => commitDraft(currentDraft)}
           onMicToggle={toggleVoice}
           recording={recording}
-          showReadyDots={messages.length === 0}
         />
+        {/* Bottom anchor for auto-scroll to keep the most recent content in
+            view when folks responds or recording state changes. */}
+        <div ref={bottomAnchorRef} />
       </div>
 
       {/* Send-to-journal pill */}
@@ -732,7 +803,6 @@ function ActiveWritingArea({
   onSend,
   onMicToggle,
   recording,
-  showReadyDots = false,
 }: {
   value: string;
   onChange: (s: string) => void;
@@ -740,7 +810,6 @@ function ActiveWritingArea({
   onSend: () => void;
   onMicToggle: () => void;
   recording: boolean;
-  showReadyDots?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow so the box extends downward as text wraps.
@@ -791,11 +860,10 @@ function ActiveWritingArea({
             lineHeight: '24px',
           }}
         />
-        {/* Ready indicator — three pulsing dots in the empty writing area
-            (only on the very first turn, when there are no messages yet).
-            Reads as "ready when you are" without confusing it with a typing
-            cursor. Pointer-events: none so taps still focus the textarea. */}
-        {!value && showReadyDots && (
+        {/* Pulsing-dot ready indicator — always shown when the textarea is
+            empty so the user always knows they can type, even while voice
+            is actively listening. */}
+        {!value && (
           <div
             aria-hidden="true"
             style={{
