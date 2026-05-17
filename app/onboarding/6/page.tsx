@@ -1,83 +1,40 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { setLockPin } from '@/lib/lock';
-import { setMeta } from '@/lib/db';
 import { ProgressDots } from '@/components/onboarding/ProgressDots';
-import { PinKeypad } from '@/components/onboarding/PinKeypad';
+import { PillButton } from '@/components/onboarding/PillButton';
 
-type Phase = 'enter' | 'confirm';
+const USER_NAME_KEY = 'folks_user_name';
 
 export default function OnboardingStep6() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('enter');
-  const [pin, setPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [error, setError] = useState(false);
-  const [shake, setShake] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // Step 1 → step 2 when 4 digits entered.
-  useEffect(() => {
-    if (phase !== 'enter') return;
-    if (pin.length !== 4) return;
-    // Small delay so the user sees the fourth dot fill before the prompt
-    // text changes.
-    const t = setTimeout(() => {
-      setPhase('confirm');
-      setError(false);
-    }, 150);
-    return () => clearTimeout(t);
-  }, [pin, phase]);
+  // Don't auto-focus on mount — keyboard popping immediately is jarring.
+  // Users tap the input themselves when they're ready.
 
-  // Step 2 → save or mismatch shake.
-  useEffect(() => {
-    if (phase !== 'confirm') return;
-    if (confirmPin.length !== 4) return;
-    if (confirmPin !== pin) {
-      setError(true);
-      setShake(true);
-      const t = setTimeout(() => {
-        setShake(false);
-        setConfirmPin('');
-        setPin('');
-        setPhase('enter');
-        setError(false);
-      }, 320);
-      return () => clearTimeout(t);
-    }
-    // Match — save + complete onboarding + go home.
-    setSaving(true);
-    (async () => {
-      try {
-        await setLockPin(pin);
-        await setMeta('hasCompletedOnboarding', true);
-        router.replace('/');
-      } catch (err) {
-        console.error('passcode save failed:', err);
-        setSaving(false);
-        setError(true);
-        setShake(true);
-        setTimeout(() => {
-          setShake(false);
-          setConfirmPin('');
-          setPin('');
-          setPhase('enter');
-          setError(false);
-        }, 320);
+  function handleAdvance() {
+    const trimmed = name.trim();
+    try {
+      if (trimmed) {
+        localStorage.setItem(USER_NAME_KEY, trimmed);
+      } else {
+        // Empty input → clear any prior value (no greeting on home).
+        localStorage.removeItem(USER_NAME_KEY);
       }
-    })();
-  }, [confirmPin, pin, phase, router]);
+    } catch {}
+    router.push('/onboarding/7');
+  }
 
-  const value = phase === 'enter' ? pin : confirmPin;
-  const setValue = phase === 'enter' ? setPin : setConfirmPin;
-
-  const headline =
-    phase === 'enter' ? 'set a 4-digit passcode.' : 'confirm your passcode.';
-  const subline =
-    'the only thing standing between your journal and the world.';
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleAdvance();
+    }
+  }
 
   return (
     <main className="relative mx-auto flex h-[100svh] w-full max-w-md flex-col px-6 pt-6">
@@ -91,7 +48,7 @@ export default function OnboardingStep6() {
         </Link>
       </header>
 
-      <div className="mt-10 flex flex-col items-center text-center">
+      <div className="mt-12 flex flex-1 flex-col">
         <span
           className="uppercase"
           style={{
@@ -101,81 +58,67 @@ export default function OnboardingStep6() {
             color: 'var(--ink-secondary)',
           }}
         >
-          YOUR PASSCODE
+          one more thing
         </span>
         <h1
           className="mt-3 italic text-ink-primary"
           style={{
             fontFamily: 'var(--font-fraunces)',
-            fontSize: 26,
+            fontSize: 28,
             lineHeight: 1.2,
             maxWidth: 320,
           }}
         >
-          {headline}
+          what should we call you?
         </h1>
         <p
-          className="mt-4 italic"
+          className="mt-3 italic"
           style={{
             fontFamily: 'var(--font-fraunces)',
             fontSize: 14,
             lineHeight: 1.45,
             color: 'var(--ink-secondary)',
-            maxWidth: 300,
+            maxWidth: 320,
           }}
         >
-          {subline}
+          just for the greeting. you can change it later in settings.
         </p>
-      </div>
 
-      {/* 4 passcode dots */}
-      <div
-        className={`mt-8 flex items-center justify-center ${shake ? 'pin-shake' : ''}`}
-        style={{ gap: 16 }}
-      >
-        {Array.from({ length: 4 }, (_, i) => {
-          const filled = i < value.length;
-          return (
-            <span
-              key={i}
-              className="block rounded-full transition-all"
-              style={{
-                width: 14,
-                height: 14,
-                background: filled
-                  ? error
-                    ? 'var(--trend-down)'
-                    : 'var(--ink-primary)'
-                  : 'transparent',
-                border: `1px solid ${
-                  error ? 'var(--trend-down)' : 'var(--ink-primary)'
-                }`,
-              }}
-            />
-          );
-        })}
-      </div>
-
-      {/* Keypad */}
-      <div className="mt-8 flex-1">
-        <PinKeypad value={value} onChange={setValue} length={4} />
+        {/* Name input — italic, underline-only, matches the journal entry
+            input pattern. */}
+        <div className="mt-10">
+          <input
+            ref={inputRef}
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="your name"
+            autoComplete="given-name"
+            autoCorrect="off"
+            spellCheck={false}
+            className="italic"
+            style={{
+              width: '100%',
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              borderBottom: '0.5px solid var(--border-hair)',
+              fontFamily: 'var(--font-fraunces)',
+              fontSize: 22,
+              color: 'var(--ink-primary)',
+              caretColor: 'var(--ink-primary)',
+              padding: '8px 0',
+            }}
+          />
+        </div>
       </div>
 
       <div className="flex flex-col items-center gap-6 pb-12">
         <ProgressDots active={6} />
-        {saving && (
-          <span
-            className="uppercase"
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              letterSpacing: '0.18em',
-              color: 'var(--ink-tertiary)',
-            }}
-          >
-            saving…
-          </span>
-        )}
+        <PillButton onClick={handleAdvance}>
+          {name.trim() ? 'next →' : 'skip →'}
+        </PillButton>
       </div>
     </main>
   );

@@ -84,7 +84,7 @@ export default function OnboardingStep5() {
       <div className="flex flex-col items-center gap-6 pb-12">
         <ProgressDots active={5} />
         <PillButton onClick={() => router.push('/onboarding/6')}>
-          set my passcode →
+          next →
         </PillButton>
       </div>
     </main>

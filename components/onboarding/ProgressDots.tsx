@@ -6,11 +6,10 @@ interface ProgressDotsProps {
 }
 
 /**
- * 6-dot progress indicator for the onboarding flow. Active dot fills coral,
- * inactive dots are hairline-bordered. Matches the spec's 6px circles + 8px
- * gap design.
+ * Progress indicator for the onboarding flow. Active dot fills coral,
+ * inactive dots are hairline-bordered. 6px circles, 8px gap.
  */
-export function ProgressDots({ active, total = 6 }: ProgressDotsProps) {
+export function ProgressDots({ active, total = 7 }: ProgressDotsProps) {
   return (
     <div
       className="flex items-center"
