@@ -34,9 +34,9 @@ export default function OnboardingStep4() {
             fontSize: '32px',
           }}
         >
-          journal your
+          say what 1am you
           <br />
-          thoughts.
+          would say.
         </h1>
         <p
           className="mt-5 max-w-[300px] text-[16px] italic leading-snug"
@@ -45,8 +45,8 @@ export default function OnboardingStep4() {
             color: '#8C7E5C',
           }}
         >
-          write about anyone, anything. who you saw, what felt warm, what felt
-          off. one sentence is enough — folks reads the rest.
+          vent about anyone — your mom, your situationship, the friend who
+          ghosts. one sentence is enough. folks remembers them.
         </p>
       </div>
 
@@ -61,7 +61,7 @@ export default function OnboardingStep4() {
           className="text-[16px] text-accent-coral"
           style={{ fontFamily: 'var(--font-fraunces)' }}
         >
-          start writing →
+          start venting →
         </span>
         <ProgressIndicator step={4} />
       </button>

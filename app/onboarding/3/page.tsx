@@ -186,7 +186,7 @@ function StepFraming({ onAdvance }: { onAdvance: () => void }) {
           className="italic text-ink-primary"
           style={{ fontSize: '17px' }}
         >
-          every entry, every name, every score —
+          every vent, every name, every read —
           <br />
           stored on this device and nowhere else.
         </p>
@@ -194,8 +194,8 @@ function StepFraming({ onAdvance }: { onAdvance: () => void }) {
           className="italic"
           style={{ fontSize: '14px', color: '#8C7E5C' }}
         >
-          no account, no cloud, no one else can see them.
-          set a 4-digit code to lock your circle.
+          the ai reads each entry in flight — anthropic doesn&apos;t keep it,
+          doesn&apos;t train on it. only your device does.
         </p>
       </div>
       <p
@@ -203,13 +203,13 @@ function StepFraming({ onAdvance }: { onAdvance: () => void }) {
         style={{
           maxWidth: 320,
           fontFamily: 'var(--font-fraunces)',
-          fontSize: 16,
+          fontSize: 15,
           lineHeight: 1.45,
           color: 'var(--ink-secondary)',
         }}
       >
-        your folks list takes shape after about a week. write a sentence a
-        night — that's all it takes.
+        set a 4-digit code so the things you&apos;d say at 1am stay between you
+        and folks.
       </p>
       <button
         onClick={onAdvance}
