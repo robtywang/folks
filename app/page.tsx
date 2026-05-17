@@ -344,13 +344,13 @@ export default function Home() {
         </svg>
       </button>
 
-      {/* Settings — gear inside the top-right cluster, paired with journal */}
+      {/* Settings — gear top-right, alone */}
       <button
         onClick={() => router.push('/settings')}
         aria-label="Open settings"
-        className="absolute text-ink-tertiary"
+        className="absolute"
         style={{
-          right: 46,
+          right: 18,
           top: 13,
           width: 18,
           height: 18,
@@ -361,40 +361,6 @@ export default function Home() {
         }}
       >
         <i className="ti ti-settings" style={{ fontSize: 16 }} />
-      </button>
-
-      {/* Journal — small notebook icon top-right */}
-      <button
-        onClick={() => router.push('/journal')}
-        aria-label="Open journal"
-        className="absolute"
-        style={{
-          right: 18,
-          top: 12,
-          width: 16,
-          height: 20,
-          background: 'transparent',
-          border: 'none',
-          padding: 0,
-        }}
-      >
-        <svg width="16" height="20" viewBox="0 0 16 20">
-          <rect
-            x="0.7"
-            y="0.7"
-            width="14.6"
-            height="18.6"
-            rx="1.5"
-            ry="1.5"
-            fill="none"
-            stroke={TAN}
-            strokeWidth="1.2"
-          />
-          <line x1="3.6" y1="0.7" x2="3.6" y2="19.3" stroke={TAN} strokeWidth="1.2" />
-          <line x1="6" y1="5.5" x2="13" y2="5.5" stroke={TAN} strokeWidth="0.9" />
-          <line x1="6" y1="8.5" x2="13" y2="8.5" stroke={TAN} strokeWidth="0.9" />
-          <line x1="6" y1="11.5" x2="11" y2="11.5" stroke={TAN} strokeWidth="0.9" />
-        </svg>
       </button>
 
       {/* Date hero — moved higher to sit closer to the wordmark. */}
@@ -602,6 +568,66 @@ export default function Home() {
           )}
         </div>
       </div>
+
+      {/* Bottom CTA — "your journal" graphic. Subtle open-book SVG with an
+          italic label. Tappable hit-area is the whole row. Sits anchored
+          near the bottom of the home page as the canonical entry point. */}
+      <button
+        onClick={() => router.push('/journal')}
+        aria-label="Open your journal"
+        className="absolute active:opacity-70 transition-opacity"
+        style={{
+          left: 0,
+          right: 0,
+          bottom: 48,
+          background: 'transparent',
+          border: 'none',
+          padding: 0,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 10,
+        }}
+      >
+        <svg width="76" height="48" viewBox="0 0 76 48" aria-hidden="true">
+          {/* Center spine */}
+          <line x1="38" y1="6" x2="38" y2="40" stroke={TAN} strokeWidth="1.1" />
+          {/* Left page silhouette */}
+          <path
+            d="M38 6 Q14 6 6 12 L6 40 Q14 36 38 36 Z"
+            fill="none"
+            stroke={TAN}
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+          {/* Right page silhouette */}
+          <path
+            d="M38 6 Q62 6 70 12 L70 40 Q62 36 38 36 Z"
+            fill="none"
+            stroke={TAN}
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+          />
+          {/* Soft "text" lines on each page */}
+          <line x1="12" y1="16" x2="32" y2="16" stroke={TAN} strokeWidth="0.7" opacity="0.7" />
+          <line x1="12" y1="20" x2="30" y2="20" stroke={TAN} strokeWidth="0.7" opacity="0.7" />
+          <line x1="12" y1="24" x2="33" y2="24" stroke={TAN} strokeWidth="0.7" opacity="0.7" />
+          <line x1="44" y1="16" x2="64" y2="16" stroke={TAN} strokeWidth="0.7" opacity="0.7" />
+          <line x1="44" y1="20" x2="62" y2="20" stroke={TAN} strokeWidth="0.7" opacity="0.7" />
+          <line x1="44" y1="24" x2="63" y2="24" stroke={TAN} strokeWidth="0.7" opacity="0.7" />
+        </svg>
+        <span
+          className="italic"
+          style={{
+            fontFamily: 'Georgia, serif',
+            fontSize: 13,
+            color: '#5A5347',
+            letterSpacing: '0.02em',
+          }}
+        >
+          enter your journal →
+        </span>
+      </button>
     </motion.main>
   );
 }
