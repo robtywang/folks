@@ -295,7 +295,13 @@ function JournalContent() {
         >
           journal
         </span>
-        <span aria-hidden="true" style={{ width: 18 }} />
+        <Link
+          href="/settings"
+          aria-label="Settings"
+          className="text-ink-secondary transition-colors hover:text-ink-primary"
+        >
+          <i className="ti ti-settings" style={{ fontSize: 18 }} />
+        </Link>
       </header>
 
       <div ref={scrollRef} className="-mx-4 flex-1 overflow-y-auto px-4 pb-12">
@@ -408,7 +414,9 @@ function JournalContent() {
   );
 }
 
-/** Auto-growing textarea sized to the entire entry text. */
+/** Auto-growing textarea sized to the entire entry text. Does NOT auto-
+ *  focus, so tapping an entry to edit doesn't immediately raise the mobile
+ *  keyboard — the user taps inside the box when they're ready to type. */
 function EditTextarea({
   value,
   onChange,
@@ -425,17 +433,12 @@ function EditTextarea({
     el.style.height = 'auto';
     el.style.height = `${Math.max(el.scrollHeight, 80)}px`;
   }, [value]);
-  useEffect(() => {
-    const id = setTimeout(() => ref.current?.focus(), 30);
-    return () => clearTimeout(id);
-  }, []);
   return (
     <textarea
       ref={ref}
       value={value}
       onChange={onChange}
       disabled={disabled}
-      autoFocus
       className="w-full resize-none rounded-md border bg-white/40 px-3 py-2.5 text-[15px] italic leading-snug text-ink-primary focus:outline-none"
       style={{
         fontFamily: 'var(--font-fraunces)',

@@ -85,6 +85,10 @@ function ChatScreenInner() {
   const seededRef = useRef(false);
   const voiceAutoStartedRef = useRef(false);
   const recognitionRef = useRef<{ stop: () => void } | null>(null);
+  // The voice accumulator. Held in a ref so commitDraft can reset it after
+  // a message is sent — otherwise the previous utterance keeps getting
+  // re-pasted on top of the new one.
+  const voiceBufferRef = useRef('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomAnchorRef = useRef<HTMLDivElement>(null);
 
@@ -246,6 +250,11 @@ function ChatScreenInner() {
         void fireFolksSays(trimmed, next, nextActive);
         return next;
       });
+      // Clear everything tied to the in-flight draft so the next utterance
+      // starts fresh — the voice buffer especially, otherwise prior text
+      // gets re-pasted on top of new transcriptions.
+      voiceBufferRef.current = '';
+      setVoiceInterim('');
       setCurrentDraft('');
     },
     [fireFolksSays, findMentionedPerson, activePersonId]
@@ -282,41 +291,36 @@ function ChatScreenInner() {
     })();
   }, [seed, commitDraft]);
 
-  // Voice as input method — fills the textarea (currentDraft). User must
-  // explicitly tap send to commit. No auto-commit on silence.
-  function stopVoice() {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setRecording(false);
-    setVoiceInterim('');
-  }
+  // Voice as input method. Recognition is initialized ONCE per chat session
+  // and then muted/unmuted on toggle — one permission prompt, one start-ding,
+  // no re-init lag. iOS Safari fires onend after each utterance even with
+  // continuous=true, so we restart in onend until the user explicitly leaves.
+  const recognitionInitedRef = useRef(false);
+  const muteRef = useRef(true);
 
-  function startVoice() {
-    if (typeof window === 'undefined') return;
+  function initRecognition(): boolean {
+    if (recognitionInitedRef.current) return true;
+    if (typeof window === 'undefined') return false;
     const w = window as unknown as Record<string, unknown>;
     const SR = (w.SpeechRecognition ?? w.webkitSpeechRecognition) as
       | (new () => unknown)
       | undefined;
     if (!SR) {
       alert('voice input is not supported in this browser. try chrome or safari.');
-      return;
+      return false;
     }
     const isIOS =
       /iPad|iPhone|iPod/.test(navigator.userAgent) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const recognition = new SR() as any;
-    recognition.continuous = !isIOS;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
-    let baseText = currentDraft
-      ? currentDraft + (currentDraft.endsWith(' ') ? '' : ' ')
-      : '';
-    let userStopped = false;
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
+      if (muteRef.current) return; // muted — ignore audio while user is "not recording"
       let finalChunk = '';
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -325,8 +329,8 @@ function ChatScreenInner() {
         else interim += t;
       }
       if (finalChunk) {
-        baseText += finalChunk;
-        setCurrentDraft(baseText);
+        voiceBufferRef.current += finalChunk;
+        setCurrentDraft(voiceBufferRef.current);
       }
       setVoiceInterim(interim);
     };
@@ -334,27 +338,26 @@ function ChatScreenInner() {
     recognition.onerror = (e: any) => {
       const code = e?.error;
       setVoiceInterim('');
-      if (code === 'aborted' || code === 'no-speech') {
-        if (!isIOS || userStopped) setRecording(false);
-        return;
+      // no-speech / aborted are normal on iOS between utterances — onend
+      // restart handles continuity. Other errors flip state off.
+      if (code !== 'no-speech' && code !== 'aborted') {
+        muteRef.current = true;
+        setRecording(false);
       }
-      userStopped = true;
-      setRecording(false);
     };
     recognition.onend = () => {
       setVoiceInterim('');
-      if (isIOS && !userStopped) {
+      // Keep recognition alive across iOS utterance boundaries.
+      if (isIOS) {
         try {
           recognition.start();
           return;
         } catch {}
       }
-      if (!userStopped) setRecording(false);
     };
 
     recognitionRef.current = {
       stop: () => {
-        userStopped = true;
         try {
           recognition.stop();
         } catch {}
@@ -362,22 +365,43 @@ function ChatScreenInner() {
     };
     try {
       recognition.start();
-      setRecording(true);
+      recognitionInitedRef.current = true;
+      return true;
     } catch (err) {
       console.warn('chat recognition.start failed:', err);
+      return false;
     }
   }
 
   function toggleVoice() {
-    if (recording) stopVoice();
-    else startVoice();
+    if (recording) {
+      // Mute — keep recognition alive so the next toggle is instant.
+      muteRef.current = true;
+      setRecording(false);
+      setVoiceInterim('');
+      return;
+    }
+    // Optimistic visual update so the listening graphic appears instantly
+    // on tap, even before recognition spins up. Reverted on init failure.
+    voiceBufferRef.current = currentDraft
+      ? currentDraft + (currentDraft.endsWith(' ') ? '' : ' ')
+      : '';
+    setRecording(true);
+    const ok = initRecognition();
+    if (!ok) {
+      setRecording(false);
+      return;
+    }
+    muteRef.current = false;
   }
 
   // Cleanup recognition on unmount.
   useEffect(() => {
     return () => {
+      muteRef.current = true;
       recognitionRef.current?.stop();
       recognitionRef.current = null;
+      recognitionInitedRef.current = false;
     };
   }, []);
 
@@ -388,7 +412,11 @@ function ChatScreenInner() {
     if (!autoVoice) return;
     if (voiceAutoStartedRef.current) return;
     voiceAutoStartedRef.current = true;
-    const id = setTimeout(() => startVoice(), 600);
+    const id = setTimeout(() => {
+      // Use toggleVoice's start path so the always-alive recognition is
+      // initialized and unmuted in one step.
+      if (!recording) toggleVoice();
+    }, 600);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoVoice]);
@@ -550,7 +578,9 @@ function ChatScreenInner() {
           {awaitingFolks && <FolksTypingDots />}
         </div>
 
-        {/* Active writing area — text and voice both fill this surface. */}
+        {/* Active writing area — text and voice both fill this surface.
+            Ready-dots hide while folks is replying so we don't stack two
+            pulsing-dot animations on top of each other. */}
         <ActiveWritingArea
           value={currentDraft + (recording && voiceInterim ? voiceInterim : '')}
           onChange={(s) => setCurrentDraft(s)}
@@ -558,6 +588,7 @@ function ChatScreenInner() {
           onSend={() => commitDraft(currentDraft)}
           onMicToggle={toggleVoice}
           recording={recording}
+          showReadyDots={!awaitingFolks}
         />
         {/* Bottom anchor for auto-scroll to keep the most recent content in
             view when folks responds or recording state changes. */}
@@ -803,6 +834,7 @@ function ActiveWritingArea({
   onSend,
   onMicToggle,
   recording,
+  showReadyDots = true,
 }: {
   value: string;
   onChange: (s: string) => void;
@@ -810,6 +842,7 @@ function ActiveWritingArea({
   onSend: () => void;
   onMicToggle: () => void;
   recording: boolean;
+  showReadyDots?: boolean;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Auto-grow so the box extends downward as text wraps.
@@ -860,10 +893,10 @@ function ActiveWritingArea({
             lineHeight: '24px',
           }}
         />
-        {/* Pulsing-dot ready indicator — always shown when the textarea is
-            empty so the user always knows they can type, even while voice
-            is actively listening. */}
-        {!value && (
+        {/* Pulsing-dot ready indicator — shown when the textarea is empty
+            so the user always knows they can type. Hidden while folks is
+            replying so we don't stack two dot animations. */}
+        {!value && showReadyDots && (
           <div
             aria-hidden="true"
             style={{
