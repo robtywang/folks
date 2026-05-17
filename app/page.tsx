@@ -306,6 +306,27 @@ export default function Home() {
         folks
       </div>
 
+      {/* "your folks" — italic wordmark top-left, balances the journal icon
+          on the right. Opens the per-friend list. */}
+      <button
+        onClick={() => router.push('/folks')}
+        aria-label="Open your folks list"
+        className="absolute italic"
+        style={{
+          left: 18,
+          top: 12,
+          fontFamily: 'Georgia, serif',
+          fontSize: 13,
+          color: TAN,
+          background: 'transparent',
+          border: 'none',
+          lineHeight: 1,
+          padding: 0,
+        }}
+      >
+        your folks
+      </button>
+
       {/* Journal — small notebook icon top-right */}
       <button
         onClick={() => router.push('/journal')}
