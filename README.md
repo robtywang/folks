@@ -1,91 +1,176 @@
-# Circle — friends tracker prototype (v0)
+# folks
 
-Voice-first friends tracker. Type or speak about your day, AI extracts who it's about, a ranked friends list emerges by closeness.
+> a journal for venting about the people in your life.
 
-See `/CLAUDE.md` for full product spec. See `/.cursorrules` for agent rules.
+**Live:** [folks-five.vercel.app](https://folks-five.vercel.app)
+
+folks is a voice-first AI journal. You vent about a friend, a parent, the person you're dating — it parses who you're talking about, remembers them across entries, and gives you an honest read on each relationship over time. Local-first by default; the AI sees text in flight but nothing leaves your device permanently.
+
+---
+
+## What it is, plainly
+
+Open the app at 1am, tap the mic, say *"katherine cancelled again, third time this month, wondering if it's me."* folks pulls Katherine out of the sentence, looks up everything you've ever said about her, and replies like a friend who's been keeping track: *"jamie has that pattern of pulling away when work gets heavy. could be that? — what did she say when you brought it up?"*
+
+That's the loop. Vent → folks reads → folks responds → entry saves to your journal. Over time, the friend-journal page for each person builds a sentiment chart, a Reading ("what folks has noticed"), and a chronological log of every entry that mentioned them.
+
+The substitute behavior is the late-night text to a friend. The product is the private, always-available version that *remembers everything*.
+
+---
+
+## Tech stack
+
+```
+Framework:   Next.js 15.5 (App Router) + React 19 + TypeScript strict
+Storage:     Dexie.js (IndexedDB) — all data local to device
+AI:          @anthropic-ai/sdk
+             · Sonnet 4.6 — entry parsing, "folks says" chat responses
+             · Opus 4.7  — Reading synthesis, weekly recap
+             · Haiku 4.5 — voice-transcript cleanup
+Voice:       Web Speech API (in-browser)
+Styling:     Tailwind CSS + CSS variables
+Fonts:       Fraunces (Georgia fallback), JetBrains Mono — Google Fonts
+Icons:       Tabler webfont, outline variants only
+Animation:   Framer Motion
+Deploy:      Vercel (auto-deploy on push to main)
+PWA:         manifest.webmanifest + apple-touch-icon set
+Auth:        None. Anonymous, device-local. Optional 4-digit passcode.
+```
+
+---
 
 ## Setup
 
 ```bash
-# 1. Install dependencies
+# 1. Install
 npm install
 
 # 2. Add your Anthropic API key
 cp .env.local.example .env.local
-# then edit .env.local and paste your key
+# edit .env.local: ANTHROPIC_API_KEY=sk-ant-...
 
-# 3. Run the dev server
+# 3. Run dev
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) — you should see the home screen with the compose card and an empty "your circle" section.
+Open [http://localhost:3000](http://localhost:3000).
 
-## Try the core flow
+Build / typecheck / lint:
+```bash
+npm run build
+npm run typecheck
+npm run lint
+```
 
-1. Type something like *"had coffee with Maya, she was really present today"* in the compose card
-2. Tap **save →**
-3. Watch the result toast: *"logged to Maya · added to your circle"*
-4. Maya appears in the ranked list below
-5. Tap her row to expand and see the entry
+`.npmrc` has `legacy-peer-deps=true` (React 19 + a couple of libs need it).
 
-Try a few more entries — same person, different person, a solo entry like *"studied at home for 3 hours"* — and watch the rankings update.
+---
 
-## Without an API key
+## The four main screens
 
-The prototype falls back to a heuristic mock parser if `ANTHROPIC_API_KEY` is unset or invalid. It uses simple regex matching on capitalized words for attribution and word-list sentiment scoring. Good enough for testing the UI flow before you commit to API costs.
+| Route | Purpose |
+|---|---|
+| `/` | Home. Compose surface: textarea + voice input + bottom CTA to journal. Top: people icon, folks wordmark, settings cog. |
+| `/chat` | Full-screen vent surface. Opens from home with seed text. Voice auto-commits on silence; text uses an explicit send button. AI responds inline; sage-tinted typing dots while waiting. *Send to journal* compiles the conversation into a single first-person entry. |
+| `/journal` | Reverse-chronological feed of every entry. Search bar (with inline coral highlighting on matches and on tracked names). Tap any entry to edit; delete is a two-tap coral pill at the bottom-left of the editor. |
+| `/folks` | Per-friend list, sorted by most-recent activity. Each row: monogram, name, tone (warm / mixed / heavy) + entry count + last-seen. Tap to open that friend's journal. |
+| `/person/[id]` | The friend journal. Monogram + name + relationship category. Sentiment analytic row. *What folks has noticed* — the AI's Reading. Sentiment tracker (smoothed curve over the last 16 entries, sage when warm, coral when heavy). Chronological entries about that person. |
 
-## File structure
+Plus: `/write` (manual entry, skips AI), `/settings` (name / passcode / data export / dev tools), and a 7-screen onboarding for first-launch users.
+
+---
+
+## Architecture
 
 ```
 app/
-  layout.tsx              # root layout, font loading
-  page.tsx                # home screen
-  globals.css             # palette + base styles
-  api/parse/route.ts      # server-side Claude API proxy
+  page.tsx                # home (compose + entrance animation)
+  layout.tsx              # root, fonts, manifest, passcode tracker
+  chat/page.tsx           # the venting surface
+  journal/page.tsx        # entry log + search + inline edit
+  folks/page.tsx          # per-friend list
+  person/[id]/page.tsx    # friend journal + sentiment tracker
+  write/page.tsx          # manual entry (skip AI)
+  settings/page.tsx       # name / passcode / data / dev
+  onboarding/{1..7}/      # 7-screen first-launch flow
+    page.tsx
+    layout.tsx            # locks body scroll
+  api/
+    parse/                # Sonnet 4.6 — entry → primary_person + sentiment + tags
+    folks-says/           # Sonnet 4.6 / Opus 4.7 — grounded chat response
+    summarize-chat/       # Sonnet 4.6 — compile chat turns into a journal entry
+    reading/              # Opus 4.7 — per-friend qualitative synthesis
+    punctuate/            # Haiku 4.5 — voice-transcript cleanup
+    status/               # health: { aiReady: boolean }
 
 components/
-  compose-card.tsx        # the paper-styled compose surface
-  friend-row.tsx          # one row in the ranked list
+  listening-bars.tsx      # animated audio meter (shared by home + chat)
+  pin-pad.tsx             # passcode input (settings)
+  lock-screen.tsx         # passcode gate on protected surfaces
+  passcode-activity-tracker.tsx
+  onboarding/             # ProgressDots, PillButton, PinKeypad, TypingDemo, FriendRow
 
 lib/
-  db.ts                   # Dexie schema
-  ai.ts                   # client-side AI call with mock fallback
-  closeness.ts            # local closeness algorithm
-  save-entry.ts           # orchestrator: parse + persist + recompute
+  db.ts                   # Dexie schema + getMeta/setMeta + person lookups
+  ai.ts                   # parseEntry (real + mock fallback) + correction memory
+  save-entry.ts           # save / update / delete + closeness recompute
+  closeness.ts            # background sentiment math (no UI display)
+  reading.ts              # generateReading + saveReading
+  lock.ts                 # PBKDF2 passcode hash, unlock state, useLockState
+  session-prompts.ts      # time-of-day placeholder rotator on home
+  seed.ts                 # /settings → "load test data" — 5 people, ~17 entries
 
-types/
-  index.ts                # TypeScript interfaces + tag vocabulary
-
-.cursorrules              # rules for Cursor agent
-CLAUDE.md                 # full product spec (place at root)
+types/index.ts            # Entry, Person, ParseResponse, Tag vocab
 ```
 
-## What's NOT in v0
+---
 
-Per CLAUDE.md, these are deferred to later builds:
+## Privacy commitments (user-facing)
 
-- Person profile screen (only ranked list + inline expansion in v0)
-- Journal sheet (book icon top-right is decorative for now)
-- Settings (gear icon decorative for now)
-- Entry edit / delete
-- Onboarding
-- Voice transcription state polish (recording animation, etc.)
-- PWA install / offline support
-- Cloud sync
+- **Voice transcription is in-browser** (Web Speech API). Audio blobs never leave the device.
+- **Default to local-only storage** (Dexie / IndexedDB). No cloud sync, no account, no backup we control.
+- **Only entry text leaves device** — sent to Anthropic at parse / response time. Anthropic API defaults: no training on inputs, no retention past the request, no human review on the normal path.
+- **One-tap export** from `/settings → data` (JSON of all entries + people).
+- **One-tap wipe** from settings (clears Dexie + passcode + meta keys).
 
-Build these in order based on whichever flow you hit first while using the prototype yourself.
+Marketing line: *we don't keep your entries. anthropic doesn't either. only your device does.*
 
-## Known issues / TODOs
+---
 
-- Voice input falls back to text-only in browsers without Web Speech API (Firefox)
-- IndexedDB clears on incognito/private mode by default
-- The mock parser is intentionally dumb — don't tune confidence thresholds against it
-- No error boundary yet; if Claude returns malformed JSON, the user sees a console error
+## What's deferred
 
-## Next steps after v0
+These exist in code (`lib/prompts.ts`, `lib/weekly-recap.ts`, `lib/insights.ts`, `app/api/prompts/`, `app/api/weekly-recap/`, `app/api/insights/`) but aren't surfaced anywhere in the UI right now. Either I'll wire them back in or strip them in the next cleanup pass.
 
-1. Build the person profile screen (drill in from `FriendRow`'s "see all →")
-2. Add the journal sheet (bottom sheet from book icon)
-3. Polish the recording state in `compose-card.tsx`
-4. Add entry edit/delete to expand the row's interaction model
-5. Build onboarding flow for first-run users
+- **Per-friend prompted questions** — Sonnet phrases statistically-detected patterns as soft questions ("what tends to be different about weekdays with maya?"). Built; not surfaced.
+- **Weekly recap** — Sunday-morning Opus digest of the week's social shape. Built; not surfaced.
+- **Pattern insight cards** — observational layer on the friend journal. Built; removed from UI pending the friend-journal redesign.
+
+---
+
+## Known limitations
+
+- Voice input requires a Chromium-based browser or Safari. Firefox has no Web Speech API.
+- iOS Safari needs HTTPS for `getUserMedia` — works on Vercel, not on `localhost` from a phone.
+- IndexedDB clears in incognito / private mode.
+- Without `ANTHROPIC_API_KEY` set, the parser falls back to a heuristic mock — fine for UI testing, not for evaluating the actual AI voice.
+- Passcode is unrecoverable. Forgetting it = factory wipe of all entries.
+
+---
+
+## Roadmap to v1.1
+
+In order:
+
+1. Dead-code cleanup (prompts / weekly-recap / insights routes + libs)
+2. Privacy policy at a stable URL (required for App Store)
+3. Capacitor wrap pointing at the Vercel URL
+4. Xcode signing + TestFlight upload
+5. Beta with 10-15 friends for two weeks
+6. Fix what breaks
+7. App Store submission
+
+---
+
+## License + ownership
+
+Private repo, not open-source. Author: Arthur (arthurwangtennis@gmail.com).
