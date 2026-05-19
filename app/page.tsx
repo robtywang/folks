@@ -3,15 +3,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { db, getMeta, setMeta } from '@/lib/db';
 import { pruneAllOrphans } from '@/lib/save-entry';
 import { recomputeAll } from '@/lib/closeness';
 import { expireOldPrompts } from '@/lib/prompts';
+import {
+  isRecapEligible,
+  generateWeeklyRecap,
+  saveWeeklyRecap,
+  dismissRecap,
+} from '@/lib/weekly-recap';
 import { hasLockPin } from '@/lib/lock';
 import { ALL_PROMPTS } from '@/lib/session-prompts';
 import { ListeningBars } from '@/components/listening-bars';
-import type { Person } from '@/types';
+import type { Person, WeeklyRecap } from '@/types';
 
 const LEGACY_ONBOARDED_KEY = 'folks_onboarded';
 const STEP4_SESSION_KEY = 'folks_onboarding_step_4';
@@ -154,8 +160,38 @@ export default function Home() {
       pruneAllOrphans().catch(console.error);
       recomputeAll().catch(console.error);
       expireOldPrompts().catch(console.error);
+
+      // Weekly-recap agent: if it's Sunday-or-later, there are ≥3 entries
+      // in the past 7 days, and no recap exists for this week, fire the
+      // Opus 4.7 generator in the background. Saved recaps live-query in
+      // and render as a dismissable card under the date hero.
+      (async () => {
+        try {
+          const eligibility = await isRecapEligible();
+          if (!eligibility.eligible) return;
+          const result = await generateWeeklyRecap();
+          if (result) {
+            await saveWeeklyRecap(result.weekStart, result.content);
+          }
+        } catch (err) {
+          console.warn('weekly recap auto-fire failed:', err);
+        }
+      })();
     })();
   }, [router]);
+
+  // Live query for the currently-active weekly recap (the dismissable
+  // Sunday card). Returns null when there's no active recap or after the
+  // user dismisses it.
+  const activeRecap: WeeklyRecap | null =
+    useLiveQuery(async () => {
+      const all = await db.weeklyRecaps
+        .where('status')
+        .equals('active')
+        .reverse()
+        .sortBy('createdAt');
+      return all[0] ?? null;
+    }, []) ?? null;
 
   // Auto-grow textarea so the box extends downward as text wraps. Tracks
   // both the typed draft and the live voice interim.
@@ -393,6 +429,75 @@ export default function Home() {
       >
         {formatDate()}
       </motion.div>
+
+      {/* Weekly recap card — sage-tinted "your week" surface from the
+          Opus 4.7 recap agent. Auto-generated on Sunday-or-later when the
+          past 7 days have ≥3 entries. Dismissable. Lives in the gap
+          between the date hero (y=92) and the greeting (y=244). */}
+      <AnimatePresence>
+        {activeRecap && (
+          <motion.div
+            key={activeRecap.id}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
+            className="absolute"
+            style={{
+              left: 16,
+              right: 16,
+              top: 130,
+              background: 'rgba(79, 160, 64, 0.07)',
+              borderLeft: '2px solid var(--accent-sage)',
+              borderRadius: 8,
+              padding: '10px 14px 12px',
+              maxHeight: 110,
+              overflow: 'hidden',
+            }}
+          >
+            <div className="flex items-center justify-between" style={{ gap: 8 }}>
+              <span
+                className="uppercase"
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 10,
+                  letterSpacing: '0.12em',
+                  color: 'var(--ink-secondary)',
+                }}
+              >
+                your week
+              </span>
+              <button
+                onClick={() => {
+                  void dismissRecap(activeRecap.id);
+                }}
+                aria-label="Dismiss this week's recap"
+                className="text-ink-tertiary transition-colors hover:text-ink-primary"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  lineHeight: 1,
+                }}
+              >
+                <i className="ti ti-x" style={{ fontSize: 13 }} />
+              </button>
+            </div>
+            <p
+              className="mt-1 italic"
+              style={{
+                fontFamily: 'var(--font-fraunces)',
+                fontSize: 13,
+                lineHeight: 1.45,
+                color: 'var(--ink-primary)',
+                whiteSpace: 'pre-line',
+              }}
+            >
+              {activeRecap.content}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Greeting sits just above the writing area, anchored to the input
           rather than the page header so it reads as "hi, [you] — write

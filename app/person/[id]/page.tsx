@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db';
 import { cadenceFor } from '@/lib/closeness';
+import { detectPatterns, type DetectedPattern } from '@/lib/insights';
 import { generateReading, saveReading, updatePersonContext } from '@/lib/reading';
 import { removePerson, mergePerson } from '@/lib/save-entry';
 import { hasLockPin, isUnlocked } from '@/lib/lock';
@@ -323,6 +324,37 @@ export default function PersonProfile({
           <SentimentTracker entries={list} />
         </div>
       )}
+
+      {/* Patterns — surfaced from the local pattern-detection agent in
+          lib/insights.ts. Pure JS detection (no LLM call) finds
+          statistical patterns above min-cohort + min-delta thresholds.
+          Renders as tan mono chips so the user can see what the agent
+          has actually noticed without any AI inference cost. */}
+      {(() => {
+        const patterns = detectPatterns(list);
+        if (patterns.length === 0) return null;
+        return (
+          <div className="mt-8">
+            <div className="mb-3 flex items-center gap-3">
+              <span
+                className="text-[10px] uppercase tracking-widest text-ink-secondary"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                patterns
+              </span>
+              <div
+                className="h-px flex-1"
+                style={{ background: 'var(--border-hair)' }}
+              />
+            </div>
+            <div className="flex flex-wrap" style={{ gap: 8 }}>
+              {patterns.map((p, i) => (
+                <PatternChip key={i} pattern={p} />
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Who is X */}
       <div className="mt-8">
@@ -884,6 +916,57 @@ function SentimentTracker({ entries }: { entries: Entry[] }) {
         <span>now</span>
       </div>
     </div>
+  );
+}
+
+/**
+ * Single pattern chip. Renders a detected statistical pattern as a soft
+ * uppercase mono pill. Coloring is muted — patterns are observations,
+ * not actions. Click does nothing (intentional — the chip is the surface).
+ */
+function PatternChip({ pattern }: { pattern: DetectedPattern }) {
+  // Label per pattern kind, short enough to fit on a chip.
+  const labelFor = (p: DetectedPattern): string => {
+    switch (p.kind) {
+      case 'weekday_warmer':
+        return 'weekday warmer';
+      case 'weekend_warmer':
+        return 'weekend warmer';
+      case 'time_of_day_warmer':
+        return p.fact.startsWith('morning')
+          ? 'morning warmer'
+          : 'evening warmer';
+      case 'tag_dominant': {
+        const m = p.fact.match(/"([^"]+)"/);
+        return m ? `tag · ${m[1]}` : 'recurring tag';
+      }
+      case 'sentiment_trending':
+        return p.delta && p.delta > 0
+          ? 'trending warmer'
+          : 'trending heavier';
+      case 'gap_unusual':
+        return 'unusual gap';
+      case 'recurring_context':
+        return 'recurring context';
+    }
+  };
+  return (
+    <span
+      title={pattern.fact}
+      className="uppercase"
+      style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 10,
+        letterSpacing: '0.12em',
+        color: 'var(--ink-secondary)',
+        padding: '4px 10px',
+        borderRadius: 999,
+        border: '0.5px solid var(--border-hair)',
+        background: 'rgba(140, 126, 92, 0.06)',
+      }}
+    >
+      {labelFor(pattern)}
+    </span>
   );
 }
 
