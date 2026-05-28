@@ -886,7 +886,7 @@ export default function SettingsPage() {
 
         {/* About */}
         <Section title="about">
-          <Row label="version" description="folks v0 prototype · all data local to this device." />
+          <Row label="version" description="folks · all data local to this device." />
           <Row
             label="ai status"
             description={
@@ -895,6 +895,19 @@ export default function SettingsPage() {
                 : aiReady
                   ? 'connected. entries are parsed by claude sonnet 4.6, readings by claude opus 4.7.'
                   : 'no ANTHROPIC_API_KEY in .env.local — falling back to the heuristic mock parser. restart the dev server after adding the key.'
+            }
+          />
+          <Row
+            label="privacy"
+            description="what we do (and don't do) with what you write."
+            action={
+              <Link
+                href="/privacy"
+                className="text-[11px] uppercase tracking-widest text-accent-coral"
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
+                open →
+              </Link>
             }
           />
         </Section>
